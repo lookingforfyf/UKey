@@ -1,0 +1,107 @@
+
+#include "stdafx.h"
+#include "OnKeyLog.h"
+
+ //以下为调试信息
+#define MAX_LINE_NUM  16
+#if (ONKEY_LOG_ON==1)
+
+#include "stdio.h"
+#include "utils.h"
+#define LOG_MAX_BUFF 1028
+
+#if (ONKEY_LOG_TYPE==2)
+bool g_bLogEnable = true;
+#endif
+void LogEntry(LPCSTR lpszMsg, LPCSTR lpszFmt, ...)
+{
+		
+#if (ONKEY_LOG_TYPE==2)
+	if (!g_bLogEnable)
+		return ;
+	FILE * f = fopen(ONKEY_LOG_PATH, "a");
+	if (f)
+	{
+		SYSTEMTIME t;
+		GetLocalTime(&t);
+		fprintf(f, "[%02d,%02d:%02d:%02d.%03d] %s: ", t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, lpszMsg);
+		fprintf(f, "(Process is %d, thread is %d)\r\n\t[", GetCurrentProcessId(), GetCurrentThreadId());
+
+		va_list params;
+		va_start(params, lpszFmt);
+		int len = vfprintf(f, lpszFmt, params);
+		va_end(params);
+
+		fprintf(f, "]\r\n");
+		fclose(f);
+	}
+#else
+	{	
+#pragma message ("debug info output debugview")	
+		char buff[LOG_MAX_BUFF]={0};		
+		sprintf(buff,"Tid=%ld,%s  ",GetCurrentThreadId(),lpszMsg);
+		char *pbuff= buff+strlen(buff);
+		va_list params;
+		va_start(params, lpszFmt);
+		_vsnprintf(pbuff,sizeof(buff)-strlen(lpszMsg),lpszFmt,params);		
+		va_end(params);	
+		OutputDebugStringA(buff);
+	}
+#endif	
+}
+
+void LogHex(LPCSTR lpszMsg, LPCVOID lpData, int nLen)
+{
+#if (ONKEY_LOG_TYPE==2)
+	if (!g_bLogEnable)
+		return ;
+	FILE * f = fopen(ONKEY_LOG_PATH, "a");
+	if (f)
+	{
+		SYSTEMTIME t;
+		GetLocalTime(&t);
+		fprintf(f, "[%02d,%02d:%02d:%02d.%03d] %s: ", t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, lpszMsg);
+		fprintf(f, "(Process is %d, thread is %d)\r\n\t[", GetCurrentProcessId(), GetCurrentThreadId());
+
+		const BYTE * p = (const BYTE *)lpData;
+		for (int i=0; i<nLen; i++)
+			fprintf(f, "%02X", p[i]);
+
+		fprintf(f, "]\r\n");
+		fclose(f);
+	}
+#else
+	{
+		char buff[LOG_MAX_BUFF]={0};
+		sprintf(buff,"%s,len =0x%08X",lpszMsg,nLen);
+		OutputDebugStringA(buff);	
+		int len = nLen;
+		UTL::memset(buff,0,LOG_MAX_BUFF);
+		for( int i=0; i < nLen ; )
+		{		
+			int j=0 ;
+			for( ; (j<MAX_LINE_NUM) && ((i+j)<nLen) ; j++ )
+			{												
+				sprintf(buff+j*3,"%02X ",((const BYTE *)lpData)[i+j]);
+				if( (i+j)%MAX_LINE_NUM == (MAX_LINE_NUM-1) )
+				{
+					OutputDebugStringA(buff);
+				}
+				else if( (i+j)%MAX_LINE_NUM ==0 )
+				{
+					OutputDebugStringA("\n");					
+				}
+			}
+			if( j != MAX_LINE_NUM )
+			{
+				OutputDebugStringA(buff);
+
+			}
+			UTL::memset(buff,0,LOG_MAX_BUFF);
+			i += j;			
+		}	
+	}
+#endif	
+}
+
+#endif // #if (ONKEY_LOG_ON==1)

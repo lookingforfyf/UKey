@@ -1,0 +1,57 @@
+/*
+说明：
+SM2算法采用256位SM2。
+SM1加解密加PAD的方式遵循PKCS#5规则，与其它对称算法使用方式相同，示例代码略。
+*/
+#include "OnKeyRSADef.h"
+
+//目前为支持ECC使用到的宏定义
+
+
+#ifndef _ONKEY_ECCDEF_H_
+#define _ONKEY_ECCDEF_H_
+
+//支持SM2算法标识
+#define PROV_SM2_FULL					96
+
+#define CRYPT_ECC_MASK					0xFFFF0000
+
+//新建容器
+#define  CRYPT_NEW_ECCKEYSET  			0xFFFF0001
+//删除容器
+#define  CRYPT_DELETE_ECCKEYSET			0xFFFF0002
+//连接到ECC容器
+#define  CRYPT_ECC_VERIFYCONTEXT		0xFFFF0003 
+
+//导入ECC公私密钥时的数据格式
+#define ECC_MAX_MODULUS_BITS_LEN		256
+#define ECC_MAX_XCOORDINATE_BITS_LEN	256
+#define ECC_MAX_YCOORDINATE_BITS_LEN	256
+
+
+//测试
+#define	CALG_SM2_EXCHANGE				1
+#define CALG_SM2_ENCRYPT				2
+
+#define ME_ECCKEY_MARK(key)				ME_RSAKEY_MARK(key)
+#define ME_ECCKEY_N_PTR(key, blocklen)	ME_RSAKEY_N_PTR(key, blocklen)
+#define ME_ECCKEY_N_LEN(key)			ME_RSAKEY_N_LEN(key)
+
+#pragma pack (push, 1)
+typedef struct Struct_ECCPRIVATEKEYBLOB
+{ 
+	ULONG AlgID; //算法标识号 CALG_SM2_EXCHANGE/ CALG_SM2_ENCRYPT
+	ULONG BitLen; 
+	BYTE  PrivateKey[ECC_MAX_MODULUS_BITS_LEN/8]; 
+}ECCPRIVATEKEYBLOB, *PECCPRIVATEKEYBLOB; 
+
+typedef struct Struct_ECCPUBLICKEYBLOB
+{ 
+	ULONG 	AlgID; //算法标识号 CALG_SM2_EXCHANGE/ CALG_SM2_ENCRYPT
+	ULONG 	BitLen; //模数的实际位长度
+	BYTE 	XCoordinate[ECC_MAX_XCOORDINATE_BITS_LEN/8];//曲线上点的X坐标 
+	BYTE 	YCoordinate[ECC_MAX_YCOORDINATE_BITS_LEN/8];//曲线上点的Y坐标 
+}ECCPUBLICKEYBLOB, *PECCPUBLICKEYBLOB; 
+#pragma pack (pop)
+
+#endif //_ONKEY_ECCDEF_H_

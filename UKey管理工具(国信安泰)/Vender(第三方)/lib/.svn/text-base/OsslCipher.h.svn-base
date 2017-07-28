@@ -1,0 +1,179 @@
+#ifndef _OSSL_CIPHER_H_
+#define _OSSL_CIPHER_H_
+
+#define OSSL_TRUE	1
+#define OSSL_FALSE	0
+
+
+#ifndef OSSL_API
+  #ifdef OSSL_EXPORTS
+  #define OSSL_API 
+  #else
+  #define OSSL_API 
+  #endif
+#endif
+#ifndef WIN32
+typedef int INT;
+#endif
+enum OSSL_HASHTYPE
+{
+	OSSL_HASHTYPE_NONE = 0,
+	OSSL_HASHTYPE_MD2,
+	OSSL_HASHTYPE_MD5,
+	OSSL_HASHTYPE_SHA1,
+	OSSL_HASHTYPE_SHA_256,
+	OSSL_HASHTYPE_SHA_384,
+	OSSL_HASHTYPE_SHA_512,
+	OSSL_HASHTYPE_SHA1MD5,
+};
+
+enum OSSL_KEYTYPE
+{
+	OSSL_KEYTYPE_NONE = 0,
+	OSSL_KEYTYPE_DES_CBC,	// 加密块链接（Cipher Block Chaining）加密方式
+	OSSL_KEYTYPE_DES_ECB,	// 电子密码本（Electronic Code Book)加密方式
+	OSSL_KEYTYPE_DES_OFB,	// 64位输出反馈（Output Feedback）加密方式
+	OSSL_KEYTYPE_DES_CFB,	// 64位加密反馈（Cipher Feedback）加密方式
+
+	OSSL_KEYTYPE_3DES112_CBC,
+	OSSL_KEYTYPE_3DES112_ECB,
+	OSSL_KEYTYPE_3DES112_OFB,
+	OSSL_KEYTYPE_3DES112_CFB,
+
+	OSSL_KEYTYPE_3DES_CBC,
+	OSSL_KEYTYPE_3DES_ECB,
+	OSSL_KEYTYPE_3DES_OFB,
+	OSSL_KEYTYPE_3DES_CFB,
+
+	OSSL_KEYTYPE_RC2_CBC,
+	OSSL_KEYTYPE_RC2_ECB,
+	OSSL_KEYTYPE_RC2_OFB,
+	OSSL_KEYTYPE_RC2_CFB,
+
+	OSSL_KEYTYPE_RC4,
+	OSSL_KEYTYPE_SSF33,
+	OSSL_KEYTYPE_SCB2,
+	OSSL_KEYTYPE_SOFT,
+
+	OSSL_KEYTYPE_SM1,
+
+	OSSL_KEYTYPE_AES_CBC,
+	OSSL_KEYTYPE_AES_ECB
+};
+
+#define OSSL_ENCRYPT 1
+#define OSSL_DECRYPT 0
+
+#define OSSL_FLAG_NOPADDING	0x80000000
+
+
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
+
+#ifndef OSSL_NO_DIGEST
+// 摘要计算
+OSSL_API INT Ossl_DigestInit(LPVOID * ctx, OSSL_HASHTYPE mdtype);
+OSSL_API INT Ossl_DigestUpdate(LPVOID ctx, LPBYTE pData, DWORD uLen);
+OSSL_API INT Ossl_DigestFinal(LPVOID ctx, LPBYTE pDigest, LPDWORD puDigestLen);
+#endif
+
+
+#ifndef OSSL_NO_CIPHER
+// 对称密钥加解密计算
+OSSL_API INT Ossl_EncryptInit(LPVOID * ctx, OSSL_KEYTYPE enctype, LPBYTE pKey, LPBYTE pIV);
+OSSL_API INT Ossl_EncryptInitEx(LPVOID * ctx, OSSL_KEYTYPE enctype, LPBYTE pKey, LPBYTE pIV, BOOL bIsPad);
+OSSL_API INT Ossl_EncryptUpdate(LPVOID ctx, LPBYTE pOut, LPDWORD pOutLen, LPBYTE pIn, DWORD nInLen);
+OSSL_API INT Ossl_EncryptFinal(LPVOID ctx, LPBYTE pOut, LPDWORD pOutLen);
+OSSL_API INT Ossl_EncryptInitEx(LPVOID * ctx, OSSL_KEYTYPE enctype, LPBYTE pKey, LPBYTE pIV, BOOL bIsPad);
+
+OSSL_API INT Ossl_DecryptInit(LPVOID * ctx, OSSL_KEYTYPE enctype, LPBYTE pKey, LPBYTE pIV);
+OSSL_API INT Ossl_DecryptInitEx(LPVOID * ctx, OSSL_KEYTYPE enctype, LPBYTE pKey, LPBYTE pIV, BOOL bIsPad);
+OSSL_API INT Ossl_DecryptUpdate(LPVOID ctx, LPBYTE pOut, LPDWORD pOutLen, LPBYTE pIn, DWORD nInLen);
+OSSL_API INT Ossl_DecryptFinal(LPVOID ctx, LPBYTE pOut, LPDWORD pOutLen);
+OSSL_API INT Ossl_DecryptInitEx(LPVOID * ctx, OSSL_KEYTYPE enctype, LPBYTE pKey, LPBYTE pIV, BOOL bIsPad);
+
+// 设置RC2的密钥
+OSSL_API INT Ossl_RC2_SetKey(LPVOID ctx, DWORD nLen, LPBYTE pData, DWORD nBits);
+// 设置padding
+OSSL_API INT Ossl_Cipher_SetPadding(LPVOID ctx, INT padding);
+
+// 把随机数->密钥 [OUT] pKey, pIV
+OSSL_API INT Ossl_BytesToKey(OSSL_KEYTYPE enctype, LPBYTE pData, DWORD nDataLen, LPBYTE pKey, LPBYTE pIV);
+
+// 产生数据 [OUT] pRand
+OSSL_API INT Ossl_GetBytes(LPVOID pSeed, DWORD nSeedLen, LPBYTE pRand, DWORD nRandLen);
+#endif
+
+
+#ifndef OSSL_NO_RSA
+OSSL_API INT Ossl_RsaPublic_d2i(LPBYTE pbRsa, DWORD dwRsaLen, LPBYTE pbKeyN, LPDWORD pdwKeyNLen, LPBYTE pbKeyE, LPDWORD pdwKeyELen);
+OSSL_API INT Ossl_RsaPublic_i2d(LPBYTE pbKeyN, DWORD dwKeyNLen, LPBYTE pbKeyE, DWORD dwKeyELen, LPBYTE pbRsa, LPDWORD pdwRsaLen);
+
+// 以下2个函数返回长度
+//#define Ossl_RsaPublic_encrypt, Ossl_RsaPublic_decrypt
+OSSL_API INT Ossl_RsaPublic_crypt(LPBYTE pbKeyN, DWORD dwKeyNLen, LPBYTE pbKeyE, DWORD dwKeyELen, LPBYTE pbIn, DWORD nInLen, LPBYTE pbOut, DWORD dwType);
+OSSL_API INT Ossl_RsaPrivate_crypt(LPBYTE pbKeyN, DWORD dwKeyNLen, LPBYTE pbKeyD, DWORD dwKeyDLen, LPBYTE pbIn, DWORD nInLen, LPBYTE pbOut, DWORD dwType);
+
+# ifdef OSSL_RSA_GENERATEKEY
+OSSL_API INT Ossl_RsaGenerateKey_me(DWORD dwBits, DWORD dwE, LPBYTE pbKeyData, LPDWORD pdwKeyLen);
+# endif
+OSSL_API INT Ossl_RsaPrivate_d2me(LPBYTE pbRsa, DWORD dwRsaLen, LPBYTE pbKeyData, LPDWORD pdwKeyLen);
+#endif // #ifndef OSSL_NO_RSA
+
+
+// 获取P12证书中的密钥和证书数据
+#ifndef OSSL_NO_PKCS12
+# define OSSL_KEYTYPE_ME		1
+# define OSSL_KEYTYPE_MSBLOB	2
+typedef struct OSSL_P12CERT
+{
+	DWORD  dwP12Len;
+	LPBYTE pbP12Data;
+	LPCSTR pszP12Pin;
+	DWORD  dwOutKeyType;
+	DWORD  dwCertType;	// OUT
+	DWORD  dwCertLen;
+	LPBYTE pbCertData;
+	DWORD  dwKeyLen;
+	LPBYTE pbKeyData;	// me or ms
+	LPDWORD pdwCaCertLen;
+	LPBYTE  pbCaCertDatas;
+}OSSL_P12CERT, *OSSL_P12CERT_PTR;
+OSSL_API INT Ossl_GetP12Data(OSSL_P12CERT_PTR pP12Cert);
+#endif
+
+
+#ifndef OSSL_NO_DIGESTCODE
+OSSL_API INT Ossl_DigestEncode(OSSL_HASHTYPE mdtype, LPBYTE pOut, LPDWORD pOutLen, LPBYTE pIn, DWORD nInLen);
+OSSL_API INT Ossl_DigestDecode(OSSL_HASHTYPE mdtype, LPBYTE pOut, LPDWORD pOutLen, LPBYTE pIn, DWORD nInLen);
+#endif
+
+
+#ifndef OSSL_NO_GETCERTPUBLICKEY
+// 从证书中提取公钥数据
+OSSL_API INT Ossl_GetCertPublicKeyN(LPBYTE pbCertData, DWORD dwCertDataLen, LPBYTE pbPublicKeyN, LPDWORD pdwPublicKeyNLen);
+#endif
+
+OSSL_API INT Ossl_Base64Decode(unsigned char *pbIn, int ulIn, unsigned char *pbOut, int *pulOut);
+OSSL_API INT Ossl_Base64Encode(unsigned char *pbIn, int ulIn, unsigned char *pbOut, int *pulOut);
+OSSL_API INT Ossl_PackP7(LPBYTE pbCertData, DWORD dwCertLen,		// 签名证书链
+					 LPBYTE pbSignature, DWORD dwSignatureLen,	// 签名结果
+					 LPBYTE pbRetP7Data, DWORD *pdwRetP7Len,	// P7返回值
+					 LPBYTE pbPlainData, DWORD dwPlainDataLen );	// 签名原文
+#ifdef  __cplusplus
+} // extern "c"
+#endif
+
+/*DES sample
+	Ossl_EncryptInit(&cipher, OSSL_KEYTYPE_DES_ECB, key, iv);
+	Ossl_EncryptUpdate(cipher, endata, &enlen, data, dlen);
+	Ossl_EncryptFinal(cipher, NULL, NULL);
+
+	Ossl_DecryptInit(&cipher, OSSL_KEYTYPE_DES_ECB, key, iv);
+	Ossl_DecryptUpdate(cipher, dedata, &delen, endata, enlen+1);
+	Ossl_DecryptFinal(cipher, NULL, NULL);
+*/
+
+#endif // #ifndef _OSSL_CIPHER_H_

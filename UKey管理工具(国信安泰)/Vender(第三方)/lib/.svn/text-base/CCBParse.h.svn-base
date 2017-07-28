@@ -1,0 +1,447 @@
+#ifndef _CCB_PARSE_H_
+#define _CCB_PARSE_H_
+
+typedef struct stCCBTransItem
+{
+	LPBYTE pItemName;  // 名称 - 账号等信息
+	DWORD dwNameLen;
+
+	LPBYTE pItemValue; // 账号值
+	DWORD dwValueLen;  
+
+	BOOL bIsShow;	  // 数据是否显示
+
+	DWORD dwOffset;   // 每组数据的结束偏移地址
+
+}ST_CCB_TRANS_ITEM, *LPST_CCB_TRANS_ITEM;
+
+typedef struct stCCBTransInfo
+{
+	DWORD dwItemCount;
+	LPST_CCB_TRANS_ITEM *ppstItemInfo;
+}ST_CCB_TRANS_INFO, *LPST_CCB_TRANS_INFO;
+
+//
+// 显示数据是否是UTF-8编码
+// 
+static BOOL ShowDataIsUTF8Code(LPBYTE pbBuffer, DWORD nLength)
+{
+	return false;
+
+	bool rv = true;
+	bool bASCII7only = true;
+	LPBYTE sx = pbBuffer;
+	LPBYTE endx = pbBuffer + nLength;
+
+	while (sx<endx)
+	{
+		if (!*sx)
+		{											// For detection, we'll say that NUL means not UTF8
+			bASCII7only = false;
+			rv = false;
+			break;
+		} 
+		else if (*sx < 0x80)
+		{			// 0nnnnnnn If the byte's first hex code begins with 0-7, it is an ASCII character.
+			sx ++;
+		} 
+		else if (*sx < (0x80 + 0x40)) 
+		{											  // 10nnnnnn 8 through B cannot be first hex codes
+			bASCII7only = false;
+			rv = false;
+			break;
+		} 
+		else if (*sx < (0x80 + 0x40 + 0x20))
+		{					  // 110xxxvv 10nnnnnn  If it begins with C or D, it is an 11 bit character
+			bASCII7only = false;
+			if (sx >= endx-1) 
+				break;
+			if (!(*sx & 0x1F) || (sx[1]&(0x80+0x40)) != 0x80) {
+				rv = false; 
+				break;
+			}
+			sx += 2;
+		} 
+		else if (*sx < (0x80 + 0x40 + 0x20 + 0x10))
+		{								// 1110qqqq 10xxxxvv 10nnnnnn If it begins with E, it is 16 bit
+			bASCII7only = false;
+			if (sx >= endx-2) 
+				break;
+			if (!(*sx & 0xF) || (sx[1]&(0x80+0x40)) != 0x80 || (sx[2]&(0x80+0x40)) != 0x80) {
+				rv = false; 
+				break;
+			}
+			sx += 3;
+		} 
+		else 
+		{													  // more than 16 bits are not allowed here
+			bASCII7only = 0;
+			rv=0;
+			break;
+		}
+	}
+	return (bASCII7only? false : rv);
+
+	//return ( ::MultiByteToWideChar(CP_UTF8, 0, (LPCSTR)pbData, dwDataLen, NULL, 0) > 0);
+}
+
+//
+// 签名数据是否是UTF-8编码，给CSP调用，需要考虑证书签名
+// 
+static BOOL SignDataIsUTF8Code(LPBYTE pbData, DWORD dwDataLen)
+{
+	return false;
+	if(dwDataLen > 2)
+	{
+		if(  ( ( 0x30 == pbData[0])  && ( 0x81 == pbData[0]) ) || ( ( 0x30 == pbData[0])  && ( 0x82 == pbData[0]) ) )
+			return FALSE;
+	}
+	return ShowDataIsUTF8Code(pbData, dwDataLen);
+}
+
+//
+// 是否是有效的显示数据 -- ""中间的数据不能有\r\n
+// 
+static BOOL IsValidShowDataInfo(LPBYTE pbData, DWORD dwDataLen)
+{
+	for(DWORD i = 0 ; i < dwDataLen; i++)
+	{
+		if( (0x0A == pbData[i]) || (0x0D == pbData[i]) )
+		{
+			return FALSE;
+		}
+		if(pbData[i] < 0x80 && !isprint(pbData[i]) )
+		{
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+// 
+// 是否是有效的分割符 - Tag , " , = , | , ; 这些数据之间 允许出现的有效字符
+// 
+static BOOL IsValidSepChar(BYTE bValue) 
+{
+	// 目前允许有的字符 空格、\r \t \n
+	return  ( 0x20 == bValue ) || ( 0x0A == bValue ) || ( 0x0D == bValue ) || ( 0x09 == bValue );
+}
+
+static DWORD GetTagBitmap(DWORD dwCount)
+{
+	DWORD dwRet = 0;
+	for(DWORD i = 0; i < dwCount; i++)
+	{
+		dwRet += (1<<i);
+	}
+	return dwRet;
+}
+
+/****************************************************************************
+建行交易数据举例:
+SH="1";SN="转出账户";IN="0"; SI="1111111111111111111";|
+SH="1";SN="转入账户姓名";IN="0"; SI="张三";|
+SH="1";SN="转入帐户";IN="0"; SI="4367420037465985234";|
+SH="1";SN="转出金额";IN="0"; SI="134.22";|
+SH="1";SN="开户行";IN="0"; SI="北京分行";|
+*****************************************************************************/
+static BOOL ParseCCBTransData(LPBYTE pbTransData, DWORD dwTransDataLen, 
+					   LPST_CCB_TRANS_INFO &pstTranItem)
+{
+#define TAG_SEP		'|'  // 分隔符
+#define TAG_EQU		'='  // =
+#define TAG_REF		'\"' // "
+#define TAG_SEM		';' // "
+
+#define TAG_MAX_COUNT	4
+
+#define TAG_SH		"SH" // 
+#define TAG_SN		"SN" // 
+#define TAG_IN		"IN" //
+#define TAG_SI		"SI" // 
+
+	BOOL bRet = TRUE;
+
+	const char * tagArray[] = {
+		TAG_SH,
+		TAG_SN,
+		TAG_IN,
+		TAG_SI
+	};
+
+	//注意：建行目前只有4组交易明细类型的Tag数据，以后扩展的话，需要更改个数
+
+	DWORD dwTransOffset = 0;
+	if(dwTransDataLen <= 0)
+	{
+		return FALSE;
+	}
+
+	if(dwTransDataLen >= 2) //证书签名
+	{
+		if( (0x30 == pbTransData[0]) && ( (0x81 == pbTransData[1]) || (0x82 == pbTransData[1]) ) )
+		{
+			return FALSE;
+		}
+	}
+
+	pstTranItem->dwItemCount = 0;
+
+	while(dwTransOffset < dwTransDataLen) // 查找SN-Tag的个数
+	{
+		if(TAG_SEP == pbTransData[dwTransOffset++])
+		{
+			pstTranItem->dwItemCount++;
+		}
+	}
+
+	if(pstTranItem->dwItemCount <= 0)
+	{
+		pstTranItem->ppstItemInfo = NULL;
+		return FALSE;
+	}
+
+	pstTranItem->ppstItemInfo = new LPST_CCB_TRANS_ITEM[pstTranItem->dwItemCount];
+
+	for(DWORD i=0; i<pstTranItem->dwItemCount; i++) // 分配空间
+	{
+		pstTranItem->ppstItemInfo[i] = new ST_CCB_TRANS_ITEM;
+
+		pstTranItem->ppstItemInfo[i]->pItemName = NULL;
+		pstTranItem->ppstItemInfo[i]->pItemValue = NULL;
+		pstTranItem->ppstItemInfo[i]->dwNameLen = 0;
+		pstTranItem->ppstItemInfo[i]->dwValueLen = 0;
+	}
+
+	// 进一步解析数据
+
+	// 先找SH，再找=，再取""内数据，最后找; 不判定SH的值是否正确
+	// 先找SN，再找=，再取""内数据， 不判定SH的值是否正确
+	// 先找IN，再找=，再取""内数据， 不判定SH的值是否正确
+	// 先找SI，再找=，再取""内数据， 不判定SH的值是否正确
+	// 一组数据结束肯定有"|"
+
+	DWORD dwPreOffset = 0,         // 
+		  dwAfterOffset = 0,       // 
+		  dwTagIndex = 0,          // 
+		  dwGroupIndex = 0;        // 组序号
+
+
+	DWORD dwShowDataLen = 0;
+
+	DWORD dwTagBitmap = 0;
+
+	const char* psTag = tagArray[dwTagIndex];
+
+	dwTransOffset = 0;
+
+	while(dwTransOffset < dwTransDataLen && dwGroupIndex < pstTranItem->dwItemCount)
+	{
+		while(dwTransOffset < dwTransDataLen) // SH 
+		{
+			if(pbTransData[dwTransOffset] == psTag[0] && pbTransData[dwTransOffset+1] == psTag[1] )
+			{
+				dwPreOffset = 0;
+				dwAfterOffset = 0;
+				break;
+			}
+			dwTransOffset++;
+		}
+
+		if(dwTransOffset >= dwTransDataLen)
+		{
+			break;
+		}
+
+		dwTransOffset += strlen((char*)psTag ); // 跳过当前的字符串
+
+		while(dwTransOffset < dwTransDataLen) // =
+		{
+			if(TAG_EQU == pbTransData[dwTransOffset])
+			{
+				break;
+			}
+			else
+			{
+				if( !IsValidSepChar(pbTransData[dwTransOffset]) )
+				{
+					return FALSE;
+				}
+			}
+			dwTransOffset++;
+		}
+
+		if(dwTransOffset >= dwTransDataLen)
+		{
+			break;
+		}
+
+		dwTransOffset++; // 跳过当前的字符
+
+		while(dwTransOffset < dwTransDataLen) // "
+		{
+			if(TAG_REF == pbTransData[dwTransOffset])
+			{
+				dwPreOffset = dwTransOffset;
+				break;
+			}
+			else
+			{
+				if( !IsValidSepChar(pbTransData[dwTransOffset]) )
+				{
+					return FALSE;
+				}
+			}
+			dwTransOffset++;
+		}
+
+		if(dwTransOffset >= dwTransDataLen)
+		{
+			break;
+		}
+
+		dwTransOffset++; // 跳过当前的字符
+
+		while(dwTransOffset < dwTransDataLen) // "
+		{
+			if(TAG_REF == pbTransData[dwTransOffset])
+			{
+				dwAfterOffset = dwTransOffset;
+				break;
+			}
+			dwTransOffset++;
+		}
+
+		if(dwTransOffset >= dwTransDataLen)
+		{
+			break;
+		}
+
+		dwTransOffset++; // 跳过当前的字符
+
+		if(dwAfterOffset > dwPreOffset + 1) // "" 必须配套出现
+		{
+			if( !IsValidShowDataInfo(pbTransData + dwPreOffset + 1, dwAfterOffset - dwPreOffset - 1) )
+			{
+				return FALSE;
+			}
+		}
+		else // ""不配套出现，或者数据为空
+		{
+			if( dwAfterOffset != dwPreOffset + 1) // 必须配套出现
+			{
+				return FALSE;
+			}
+
+			if( (dwAfterOffset != dwPreOffset + 1)  && ( (0 == dwTagIndex) || (2 == dwTagIndex) ) )  // SN和SI的值可以为空
+			{
+				return FALSE;
+			}
+		}
+
+		if( ( (0 == dwTagIndex) || (2 == dwTagIndex) ) && (dwAfterOffset > dwPreOffset + 2) )//IN - Tag 
+		{
+			return FALSE;
+		}
+
+		if(0 == dwTagIndex) //SH - Tag 
+		{
+			pstTranItem->ppstItemInfo[dwGroupIndex]->bIsShow = (pbTransData[dwPreOffset + 1] == '1') ; //是否 显示
+		}
+
+		if(1 == dwTagIndex) //SN - Tag 
+		{
+			pstTranItem->ppstItemInfo[dwGroupIndex]->pItemName = pbTransData + dwPreOffset + 1;
+			if(dwAfterOffset > dwPreOffset)
+			{
+				pstTranItem->ppstItemInfo[dwGroupIndex]->dwNameLen = dwAfterOffset - dwPreOffset - 1;
+
+				if(pstTranItem->ppstItemInfo[dwGroupIndex]->bIsShow)
+				{
+					dwShowDataLen += pstTranItem->ppstItemInfo[dwGroupIndex]->dwNameLen;
+				}
+			}
+		}
+
+		if(3 == dwTagIndex) //SI - Tag 
+		{
+			pstTranItem->ppstItemInfo[dwGroupIndex]->pItemValue = pbTransData + dwPreOffset + 1;
+			if(dwAfterOffset > dwPreOffset)
+			{
+				pstTranItem->ppstItemInfo[dwGroupIndex]->dwValueLen = dwAfterOffset - dwPreOffset - 1;
+
+				if(pstTranItem->ppstItemInfo[dwGroupIndex]->bIsShow)
+				{
+					dwShowDataLen += pstTranItem->ppstItemInfo[dwGroupIndex]->dwValueLen;
+				}
+			}
+		}
+
+		while(dwTransOffset < dwTransDataLen) // ;
+		{
+			if(TAG_SEM == pbTransData[dwTransOffset])
+			{
+				break;
+			}
+			else
+			{
+				if( !IsValidSepChar(pbTransData[dwTransOffset]) )
+				{
+					return FALSE;
+				}
+			}
+			dwTransOffset++;
+		}
+
+		dwTransOffset++; // 跳过当前的字符
+
+		if(dwTransOffset >= dwTransDataLen)
+		{
+			break;
+		}
+
+		if(TAG_MAX_COUNT-1 == dwTagIndex) // 如果是最后最后一个Tag的话，需要查找分隔符
+		{
+			while(dwTransOffset < dwTransDataLen) // |
+			{
+				if(TAG_SEP == pbTransData[dwTransOffset])
+				{
+					pstTranItem->ppstItemInfo[dwGroupIndex]->dwOffset = dwTransOffset;
+
+					dwGroupIndex++;
+
+					if((dwTransOffset+1)<dwTransDataLen) //后面还有数据，需要跳过结束符进行再次解析
+					{
+						dwTransOffset++;
+					}
+					break;
+				}
+				else
+				{
+					if( !IsValidSepChar(pbTransData[dwTransOffset]) )
+					{
+						return FALSE;
+					}
+				}
+				dwTransOffset++;
+			}
+		}
+
+		dwTagIndex++; // 找下一个Tag
+		dwTagIndex = dwTagIndex%TAG_MAX_COUNT;
+		psTag = tagArray[dwTagIndex];
+	}
+
+	while((dwTransOffset+1)<dwTransDataLen) // 最后一个‘|’分隔符之后的剩余的数据是否有效
+	{
+		if( !IsValidSepChar(pbTransData[dwTransOffset]) )
+		{
+			return FALSE;
+		}
+		dwTransOffset++;
+	}
+
+	return /*(dwShowDataLen > 0) && */(dwGroupIndex == pstTranItem->dwItemCount && (dwTransOffset+1) == dwTransDataLen);
+}
+
+#endif

@@ -1,0 +1,637 @@
+#ifndef __ONKEY_RES_H__
+#define __ONKEY_RES_H__
+
+#include "OnKeyReg.h"
+#include "stdio.h"
+
+#if (_MSC_VER < 1500)
+#define _stprintf_s _stprintf
+#endif
+
+inline int GetLanguageID()
+{
+	static int nCode = 0;
+	if(0 == nCode)
+	{
+		nCode = Reg_GetProfileInt(TEXT("SoftCodePage"), 0);
+		if (nCode == 0)
+		{
+			nCode = ::GetSystemDefaultLangID();
+		}
+	}
+	return nCode;
+}
+
+inline  HRESULT WINAPI ResGetCfgText(LPCTSTR pszApp, LPCTSTR pszKey, LPTSTR pszValue, int nValSize)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH);
+
+	TCHAR szPath[MAX_PATH] = {0};
+	reg.GetProfileString(_T("SoftInstallPath"), _T(""), szPath);
+
+	TCHAR strLangFile[MAX_PATH] = {0};
+
+	_stprintf_s(strLangFile, ONKEY_FILE_LANG_STR, szPath);
+
+	int nLangId = GetLanguageID();
+
+	TCHAR strLangIDFile[MAX_PATH] = {0};
+	_stprintf_s(strLangIDFile, _T("%s\\langs\\%d.ini"), szPath, nLangId);
+
+	::GetPrivateProfileString(pszApp, pszKey, _T(""), pszValue, nValSize, strLangIDFile);
+	return 0;
+}
+
+#ifdef __ATLSTR_H__
+
+static CString Res_GetProfileString(LPCTSTR pszKey)
+{
+	CString ret;
+	ResGetCfgText(_T("TEXT"), pszKey, ret.GetBuffer(256), 256);
+	ret.ReleaseBuffer();
+	return ret;
+}
+
+static CString Res_GetKeyWordString(LPCTSTR pszKey)
+{
+	CString ret;
+	ResGetCfgText(_T("KEYWORDS"), pszKey, ret.GetBuffer(128), 128);
+	ret.ReleaseBuffer();
+	return ret;
+}
+
+static CString Res_GetProfileString(LPCTSTR pszKey, DWORD dwType)
+{
+	CString ret;
+	CString retPart = Res_GetProfileString(pszKey);
+
+
+	switch (dwType)
+	{
+	case ADD_PRON:
+		{
+			CString strKey = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			ret.Format(retPart, strKey.GetBuffer(strKey.GetLength()));
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_CLTN:
+		{
+			CString strKey = Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME);
+			ret.Format(retPart, strKey.GetBuffer(strKey.GetLength()));
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_CLTN_PRON:
+		{
+			CString strKey1 = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			CString strKey2 = Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME);
+			ret.Format(retPart, strKey2.GetBuffer(strKey2.GetLength()), strKey1.GetBuffer(strKey1.GetLength()));
+			strKey1.ReleaseBuffer();
+			strKey2.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_PRON_CLTN:
+		{
+			CString strKey2 = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			CString strKey1 = Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME);
+			ret.Format(retPart, strKey2.GetBuffer(strKey2.GetLength()), strKey1.GetBuffer(strKey1.GetLength()));
+			strKey1.ReleaseBuffer();
+			strKey2.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_PRON_PRON:
+		{
+			CString strKey1 = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			CString strKey2 = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			ret.Format(retPart, strKey1.GetBuffer(strKey1.GetLength()), strKey2.GetBuffer(strKey2.GetLength()));
+			strKey1.ReleaseBuffer();
+			strKey2.ReleaseBuffer();
+		}
+		break;
+	case ADD_PRON_PRON_PRON:
+		{
+			CString strKey = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			ret.Format(retPart, strKey.GetBuffer(), strKey.GetBuffer(), strKey.GetBuffer());
+		}
+		break;
+
+	case ADD_NONE:
+	default:
+		{
+			ret = retPart;
+		}
+		break;
+	}
+
+	return ret;
+}
+
+static CString Res_GetProfileString(LPCTSTR pszKey,DWORD dwAdd, DWORD dwType)
+{
+	CString ret;
+
+	CString retPart = Res_GetProfileString(pszKey);
+
+	switch (dwType)
+	{
+	case ADD_PRON_DWORD:
+		{
+			CString strKey = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			ret.Format(retPart, strKey.GetBuffer(strKey.GetLength()), dwAdd);
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_DWORD_PRON:
+		{
+			CString strKey = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			ret.Format(retPart, dwAdd,strKey.GetBuffer(strKey.GetLength()));
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_CLTN_DWORD:
+		{
+			CString strKey = Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME);
+			ret.Format(retPart, strKey.GetBuffer(strKey.GetLength()), dwAdd);
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_DWORD_CLTN:
+		{
+			CString strKey = Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME);
+			ret.Format(retPart, dwAdd,strKey.GetBuffer(strKey.GetLength()));
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_NONE:
+	default:
+		{
+			ret = retPart;
+		}
+		break;
+	}
+
+	return ret;
+}
+
+static CString Res_GetProfileString(LPCTSTR pszKey, CString strAdd, DWORD dwType)
+{
+	CString ret;
+	CString retPart = Res_GetProfileString(pszKey);
+
+	switch (dwType)
+	{
+	case ADD_PRON_STRDD:
+		{
+			CString strKey = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			ret.Format(retPart, strKey.GetBuffer(strKey.GetLength()), strAdd);
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_STRDD_PRON:
+		{
+			CString strKey = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+			ret.Format(retPart, strAdd,strKey.GetBuffer(strKey.GetLength()));
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_CLTN_STRDD:
+		{
+			CString strKey = Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME);
+			ret.Format(retPart, strKey.GetBuffer(strKey.GetLength()), strAdd);
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_STRDD_CLTN:
+		{
+			CString strKey = Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME);
+			ret.Format(retPart, strAdd,strKey.GetBuffer(strKey.GetLength()));
+			strKey.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_NONE:
+	default:
+		{
+			ret = retPart;
+		}
+		break;
+	}
+
+	return ret;
+}
+
+static CString Res_GetProfileString(LPCTSTR pszKey, DWORD dwAdd, CString strAdd, DWORD dwType)
+{
+	CString ret;
+
+
+	CString retPart = Res_GetProfileString(pszKey);
+	CString strKeyC = Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME);
+	CString strKeyP = Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION);
+
+	switch (dwType)
+	{
+	case ADD_PRON_CLTN_DWORD:
+		{
+			ret.Format(retPart, strAdd,strKeyP.GetBuffer(strKeyP.GetLength()), 
+				strKeyC.GetBuffer(strKeyC.GetLength()), dwAdd);
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_PRON_CLTN_STRDD:
+		{
+			ret.Format(retPart, strAdd,strKeyP.GetBuffer(strKeyP.GetLength()), 
+				strKeyC.GetBuffer(strKeyC.GetLength()), strAdd);
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_CLTN_PRON_DWORD:
+		{
+			ret.Format(retPart, strAdd,strKeyC.GetBuffer(strKeyC.GetLength()),
+				strKeyP.GetBuffer(strKeyP.GetLength()), dwAdd);
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_CLTN_PRON_STRDD:
+		{
+			ret.Format(retPart, strKeyC.GetBuffer(strKeyC.GetLength()),
+				strKeyP.GetBuffer(strKeyP.GetLength()), strAdd);
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_DWORD_CLTN_PRON:
+		{
+			ret.Format(retPart, dwAdd, strKeyC.GetBuffer(strKeyC.GetLength()),
+				strKeyP.GetBuffer(strKeyP.GetLength()));
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_DWORD_PRON_CLTN:
+		{
+			ret.Format(retPart, dwAdd, strKeyP.GetBuffer(strKeyP.GetLength()),
+				strKeyC.GetBuffer(strKeyC.GetLength()));
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_STRDD_CLTN_PRON:
+		{
+			ret.Format(retPart, strAdd,strKeyC.GetBuffer(strKeyC.GetLength()),
+				strKeyP.GetBuffer(strKeyP.GetLength()));
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_STRDD_PRON_CLTN:
+		{
+			ret.Format(retPart, strAdd, strKeyP.GetBuffer(strKeyP.GetLength()),
+				strKeyC.GetBuffer(strKeyC.GetLength()));
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_CLTN_DWORD_PRON:
+		{
+			ret.Format(retPart, strKeyC.GetBuffer(strKeyC.GetLength()), dwAdd,
+				strKeyP.GetBuffer(strKeyP.GetLength()));
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_CLTN_STRDD_PRON:
+		{
+			ret.Format(retPart, strAdd,strKeyC.GetBuffer(strKeyC.GetLength()) ,
+				strKeyP.GetBuffer(strKeyP.GetLength()));
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_PRON_DWORD_CLTN:
+		{
+			ret.Format(retPart, strKeyC.GetBuffer(strKeyC.GetLength()),
+				dwAdd,strKeyP.GetBuffer(strKeyP.GetLength()));
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+	case ADD_PRON_STRDD_CLTN:
+		{
+			ret.Format(retPart, strKeyP.GetBuffer(strKeyP.GetLength()),
+				strAdd, strKeyC.GetBuffer(strKeyC.GetLength()));
+			strKeyC.ReleaseBuffer();
+			strKeyP.ReleaseBuffer();
+		}
+		break;
+
+	case ADD_NONE:
+	default:
+		{
+			ret = retPart;
+		}
+		break;
+	}
+
+	return ret;
+}
+
+#else
+
+static  LPTSTR Res_GetProfileString(LPCTSTR pszKey)
+{
+	static TCHAR g_Buf[MAX_PATH*10] = {0};
+	ZeroMemory(g_Buf, sizeof(g_Buf));
+	ResGetCfgText(_T("TEXT"), pszKey, g_Buf, MAX_PATH*10);
+	return g_Buf;
+}
+
+static  LPTSTR Res_GetKeyWordString(LPCTSTR pszKey)
+{
+	static TCHAR g_Key[MAX_PATH] = {0};
+	ZeroMemory(g_Key, sizeof(g_Key));
+	ResGetCfgText(_T("KEYWORDS"), pszKey, g_Key, MAX_PATH);
+	return g_Key;
+}
+
+static  LPTSTR Res_GetProfileString(LPCTSTR pszKey, DWORD dwType)
+{
+	static TCHAR g_Ret1[MAX_PATH*10] = {0};
+	ZeroMemory(g_Ret1, sizeof(g_Ret1));
+
+	switch (dwType)
+	{
+	case ADD_PRON:
+		{
+			_stprintf_s(g_Ret1, Res_GetProfileString(pszKey), 
+				Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+		}
+		break;
+
+	case ADD_CLTN:
+		{
+			_stprintf_s(g_Ret1, Res_GetProfileString(pszKey), 
+				Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME));
+		}
+		break;
+
+	case ADD_CLTN_PRON:
+		{
+			TCHAR keyPro[MAX_PATH] = {0};
+			TCHAR keyCli[MAX_PATH] = {0};
+
+			lstrcpy(keyPro, Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+			lstrcpy(keyCli, Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME));
+
+			_stprintf_s(g_Ret1, Res_GetProfileString(pszKey), keyCli, keyPro);
+		}
+		break;
+
+	case ADD_PRON_CLTN:
+		{
+			TCHAR keyPro[MAX_PATH] = {0};
+			TCHAR keyCli[MAX_PATH] = {0};
+
+			lstrcpy(keyPro, Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+			lstrcpy(keyCli, Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME));
+
+			_stprintf_s(g_Ret1, Res_GetProfileString(pszKey), keyPro, keyCli);
+		}
+		break;
+
+	case ADD_PRON_PRON:
+		{
+			TCHAR keyPro[MAX_PATH] = {0};
+			TCHAR keyPro1[MAX_PATH] = {0};
+
+			lstrcpy(keyPro, Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+			lstrcpy(keyPro1, Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+
+			_stprintf_s(g_Ret1, Res_GetProfileString(pszKey), keyPro, keyPro1);
+		}
+		break;
+	case ADD_PRON_PRON_PRON:
+		{
+			TCHAR keyPro[MAX_PATH] = {0};
+
+			lstrcpy(keyPro, Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+
+			_stprintf_s(g_Ret1, Res_GetProfileString(pszKey), keyPro, keyPro, keyPro);
+		}
+		break;
+
+	case ADD_NONE:
+	default:
+		{
+			lstrcpy(g_Ret1, Res_GetProfileString(pszKey));
+		}
+		break;
+	}
+
+	return g_Ret1;
+}
+
+static  LPTSTR Res_GetProfileString(LPCTSTR pszKey,DWORD dwAdd, DWORD dwType)
+{
+	static TCHAR g_Ret2[MAX_PATH*10] = {0};
+	ZeroMemory(g_Ret2, sizeof(g_Ret2));
+
+	switch (dwType)
+	{
+	case ADD_PRON_DWORD:
+		{
+			_stprintf_s(g_Ret2, Res_GetProfileString(pszKey), 
+				Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION), dwAdd);
+		}
+		break;
+
+	case ADD_DWORD_PRON:
+		{
+			_stprintf_s(g_Ret2, Res_GetProfileString(pszKey), 
+				dwAdd, Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+		}
+		break;
+
+	case ADD_CLTN_DWORD:
+		{
+			_stprintf_s(g_Ret2, Res_GetProfileString(pszKey), 
+				Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME), dwAdd);
+		}
+		break;
+
+	case ADD_DWORD_CLTN:
+		{
+			_stprintf_s(g_Ret2, Res_GetProfileString(pszKey), 
+				dwAdd, Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME));
+		}
+		break;
+	case ADD_DWORD_PRON_PRON_PRON:
+		{
+			TCHAR keyPro[MAX_PATH] = {0};
+			lstrcpy(keyPro, Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+			_stprintf_s(g_Ret2, Res_GetProfileString(pszKey), dwAdd, keyPro, keyPro, keyPro);
+
+			break;
+		}
+
+	case ADD_NONE:
+	default:
+		{
+			lstrcpy(g_Ret2, Res_GetProfileString(pszKey));
+		}
+		break;
+	}
+
+	return g_Ret2;
+}
+
+static LPTSTR Res_GetProfileString(LPCTSTR pszKey, LPCTSTR strAdd, DWORD dwType)
+{
+	static TCHAR g_Ret3[MAX_PATH] = {0};
+	ZeroMemory(g_Ret3, sizeof(g_Ret3));
+
+	switch (dwType)
+	{
+	case ADD_PRON_STRDD:
+		{
+			_stprintf_s(g_Ret3, Res_GetProfileString(pszKey), 
+				Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION), strAdd);
+		}
+		break;
+
+	case ADD_STRDD_PRON:
+		{
+			_stprintf_s(g_Ret3, Res_GetProfileString(pszKey), 
+				strAdd, Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+		}
+		break;
+
+	case ADD_CLTN_STRDD:
+		{
+			_stprintf_s(g_Ret3, Res_GetProfileString(pszKey), 
+				Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME), strAdd);
+		}
+		break;
+
+	case ADD_STRDD_CLTN:
+		{
+			_stprintf_s(g_Ret3, Res_GetProfileString(pszKey), 
+				strAdd, Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME));
+		}
+		break;
+
+	case ADD_NONE:
+	default:
+		{
+			lstrcpy(g_Ret3, Res_GetProfileString(pszKey));
+		}
+		break;
+	}
+
+	return g_Ret3;
+}
+
+static LPTSTR Res_GetProfileString(LPCTSTR pszKey, DWORD dwAdd, LPCTSTR strAdd, DWORD dwType)
+{
+	static TCHAR g_Ret4[MAX_PATH] = {0};
+	ZeroMemory(g_Ret4, sizeof(g_Ret4));
+
+	TCHAR keyPro[MAX_PATH] = {0};
+	TCHAR keyCli[MAX_PATH] = {0};
+
+	lstrcpy(keyPro, Res_GetKeyWordString(ONKEY_INIDEF_KEYWORDS_PRODUCTION));
+	lstrcpy(keyCli, Res_GetKeyWordString(ONEKY_INIDEF_KEYWORDS_CLIENTNAME));
+
+
+	switch (dwType)
+	{
+	case ADD_PRON_CLTN_DWORD:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), keyPro, keyCli, dwAdd);
+		}
+		break;
+	case ADD_PRON_CLTN_STRDD:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), keyPro, keyCli, strAdd);
+		}
+		break;
+	case ADD_CLTN_PRON_DWORD:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), keyCli, keyPro, dwAdd);
+		}
+		break;
+	case ADD_CLTN_PRON_STRDD:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), keyCli, keyPro, strAdd);
+		}
+		break;
+	case ADD_DWORD_CLTN_PRON:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), dwAdd, keyCli, keyPro);
+		}
+		break;
+	case ADD_DWORD_PRON_CLTN:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), dwAdd, keyPro, keyCli);
+		}
+		break;
+	case ADD_STRDD_CLTN_PRON:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), strAdd, keyCli, keyPro);
+		}
+		break;
+	case ADD_STRDD_PRON_CLTN:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), strAdd, keyPro, keyCli);
+		}
+		break;
+	case ADD_CLTN_DWORD_PRON:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), keyCli, dwAdd, keyPro);
+		}
+		break;
+	case ADD_CLTN_STRDD_PRON:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), keyCli, strAdd, keyPro);
+		}
+		break;
+	case ADD_PRON_DWORD_CLTN:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), keyPro, dwAdd, keyCli);
+		}
+		break;
+	case ADD_PRON_STRDD_CLTN:
+		{
+			_stprintf_s(g_Ret4, Res_GetProfileString(pszKey), keyPro, strAdd, keyCli);
+		}
+		break;
+
+	case ADD_NONE:
+	default:
+		{
+			lstrcpy(g_Ret4, Res_GetProfileString(pszKey));
+		}
+		break;
+	}
+
+	return g_Ret4;
+}
+#endif
+
+
+#endif

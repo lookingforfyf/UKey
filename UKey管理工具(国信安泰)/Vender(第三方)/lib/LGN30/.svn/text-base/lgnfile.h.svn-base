@@ -1,0 +1,384 @@
+/*! \file lgnfile.h 
+*  \brief 文件操作集类
+*
+*  工程要包含本文件，依赖文件：lgnbase.h
+*
+*  根据系统类型包含对应系统的文件操作集类，并声明文件整体性操作静态模板类FileWhole，字符串行读写文件模板类CStdioFileT
+*  
+*  \author ljc
+*  \version 3.0.0
+*  \date    2010-2012
+*  \bug
+*  \warning
+*/
+
+#ifndef __LGN_FILE_H__
+#define __LGN_FILE_H__
+
+#if (LGN_WINSYS)
+#include "win\lgnwin.file.h"
+#else
+#include "unix/lgnunix.file.h"
+#endif
+
+#ifndef __LGN_BASE_H__
+#error lgnfile.h requires include lgnbase.h
+#endif
+
+
+namespace LGN
+{
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	//! 文件整体性操作静态模板类
+	/*! 主要实现文件（文件名字符类型 BaseType）一次性读写操作，不考虑数据编码，以二进制方式读写。如果要读写带编码的文件数据，用#LGN::EncodingTraits来转换编码。 
+	 * -# 点击这里查看 \ref filewhole_example_page	
+	*/
+	template< typename BaseType >
+	class FileWhole
+	{
+	public:
+		/*! \brief 共享读方式打开文件（只读），并读取文件数据
+			\param [in] pszFileName 文件完整名称
+			\param [out] buff 文件的所有二进制数据
+			\return true 或 flase
+		*/
+		static bool GetAllData(const BaseType * pszFileName, CByteBuffer & buff)
+		{
+			bool bRet = false;
+			CFile file;
+			if (SUCCEEDED(file.Create(pszFileName, CFile::accessRead, CFile::shareRead, CFile::openExisting)))
+			{
+				UINT64 nFileSize = 0;
+				file.GetSize(nFileSize);
+				bRet = SUCCEEDED(file.Read(buff.GetBufferSetLength((int)nFileSize), (int)nFileSize));
+				file.Close();
+			}
+			return bRet;
+		}
+
+		/*! \brief 共享读方式打开文件（只读），并读取文件数据
+			\param [in] pszFileName 文件完整名称
+			\return 文件的所有二进制数据；如果打开文件失败，则返回长度为0的CByteBuffer对象。
+			\note 内部调用 see GetAllData(\a pszFileName, 0, \a result)
+		*/
+		static CByteBuffer GetAllData(const BaseType * pszFileName)
+		{
+			CByteBuffer buff;
+			GetAllData(pszFileName, buff);
+			return buff;
+		}
+
+		/*! \brief 共享读方式打开文件（只写），并写入文件数据
+			\param [in] pszFileName 文件完整名称
+			\param [in] pData 待写入的二进制数据
+			\param [in] nLength pData的长度
+			\param [in] bFirst =  false 是否首次写入，如果是则新建文件
+			\return true 或 flase
+		*/
+        static bool AppendData(const BaseType * pszFileName, LPCVOID pData, int nLength, bool bFirst = false)
+        {
+			CFile file;
+            UINT32 dwMode = bFirst? CFile::createAlways : CFile::openExisting;
+			if (SUCCEEDED(file.Create(pszFileName, CFile::accessWrite, CFile::shareRead, dwMode)))
+			{
+                if (!bFirst)
+                    file.Seek(0, CFile::End);
+                file.Write(pData, nLength);
+                file.Close();
+                return true;
+            }
+            return false;
+        }
+	};
+
+	// class rename
+	typedef FileWhole< CHAR > FileA; //!< 类型重定义 LGN::FileWhole
+	typedef FileWhole< WCHAR > FileW; //!< 类型重定义 LGN::FileWhole
+	typedef FileWhole< TCHAR > File; //!< 类型重定义 LGN::FileWhole
+
+/*! \page filewhole_example_page FileWhole例子
+<pre> 读取文件的所有数据，并转换为当前编码的字符串</pre>
+<pre>
+\#include "lgnbase.h"
+
+	//...
+	LGN::CByteBuffer fileData;
+	if (LGN::File::GetAllData(TEXT("1.txt"), fileData))
+	{
+		LGN::CString strText = LGN::Encoding::GetString(fileData);
+	}
+</pre>
+*/
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	//! 字符串行读写文件模板类
+	/*! 继承于CFile，主要实现文件的行读写，内部做文件存储与字符串存储之间的编码转换。 
+	 * -# 点击这里查看 \ref stdiofile_example_page	
+	*/
+	template< typename BaseType >
+	class CStdioFileT : public CFile
+	{
+	public:
+		//! 构造函数
+		CStdioFileT() : m_eEncoding(EncodingBase::eUnknown)
+		{
+		}
+		//! 构造函数，外部传入文件对象
+		CStdioFileT( CStdioFileT & file ) : CFile( file ), m_eEncoding(file.m_eEncoding)
+		{
+		}
+		//! 构造函数，外部传入文件句柄
+		explicit CStdioFileT( HANDLE hFile ) : CFile( hFile ), m_eEncoding(EncodingBase::eUnknown)
+		{
+		}
+
+		/*! \brief 获取文件存储的编码类型
+			\return 文件存储的编码类型
+			\note 在编码类型为未知时，则从文件中读取编码前缀来判断编码类型
+		*/
+		EncodingBase::EncodingType GetEncoding() 
+		{
+			if (m_eEncoding == EncodingBase::eUnknown)
+			{
+				BYTE abCacheBuff[4];
+				UINT32 unCacheLen = 0, unOffset = 0;
+
+				CFile::Read(abCacheBuff, 4, unCacheLen);
+				if (unCacheLen > 0)
+				{
+					m_eEncoding = EncodingBase::GetEncoding(abCacheBuff, unCacheLen, unOffset);
+					CFile::Seek(-(INT64)(unCacheLen-unOffset));
+				}
+			}
+			return m_eEncoding;
+		}
+
+		/*! \brief 设置文件存储的编码类型
+			\param [in] eEncoding 新的编码类型
+			\return true 或 false
+			\note 当设置的新编码类型不同于文件存储的在编码类型，则读取该文件的所有数据后，做编码转换后再写入，会影响文件游标位置。
+		*/
+		bool SetEncoding(EncodingBase::EncodingType eEncoding) 
+		{
+			if (m_eEncoding != eEncoding)
+			{
+				// 新编码
+				CByteBuffer buffFeature = EncodingBase::GetEncodingFeature(eEncoding);
+
+				// 获取文件所有数据
+				CByteBuffer fileData;
+				UINT64 nFileSize = 0;
+				CFile::GetSize(nFileSize);
+				if (nFileSize > 0)
+				{
+					CFile::Seek(0, CFile::Begin);
+					if(FAILED(CFile::Read(fileData.GetBufferSetLength((int)nFileSize), (int)nFileSize)))
+						return false;
+
+					// 旧编码
+					m_eEncoding = EncodingBase::GetEncoding(fileData);
+					if (m_eEncoding != eEncoding)
+					{
+						CBufferT< BaseType > strOldFileData = EncodingTraits< BaseType >::GetString(fileData, m_eEncoding);
+						// 新编码
+						CByteBuffer buffNewFileData = EncodingTraits< BaseType >::GetBytes(strOldFileData, eEncoding);
+
+						CFile::SetSize(0);
+						if (FAILED(CFile::Write(buffFeature.GetCBuffer(), buffFeature.GetLength())))
+							return false;
+						if (FAILED(CFile::Write(buffNewFileData.GetCBuffer(), buffNewFileData.GetLength())))
+							return false;
+					}
+					CFile::Seek(buffFeature.GetLength(), CFile::Begin);
+				}
+				else
+				{
+					if (FAILED(CFile::Write(buffFeature.GetCBuffer(), buffFeature.GetLength())))
+						return false;
+				}
+				m_eEncoding = eEncoding;
+			}
+			return true;
+		}
+
+		/*! \brief 往文件里写入一行字符串
+			\param [in] sString 字符串
+			\return true 或 false
+		*/
+		void WriteString(const CBufferT< BaseType > & sString)
+		{
+			CByteBuffer buff = EncodingTraits< BaseType >::GetBytes(sString, m_eEncoding);
+			HRESULT hr = CFile::Write(buff.GetCBuffer(), buff.GetLength()); 
+			if (SUCCEEDED(hr))
+			{			
+				// 写换行回车
+				CBufferT< BaseType > strEnter;
+				strEnter.AppendBaseType('\r');
+				strEnter.AppendBaseType('\n');
+				CByteBuffer buff2 = EncodingTraits< BaseType >::GetBytes(strEnter, m_eEncoding);
+				hr = CFile::Write(buff2.GetCBuffer(), buff2.GetLength()); 
+			}
+			return SUCCEEDED(hr);
+		}
+
+		/*! \brief 从文件中读取一行字符串
+			\param [out] rString 字符串
+			\return true 或 false
+		*/
+		bool ReadString(CBufferT< BaseType > & rString)
+		{
+			CByteBuffer buff;
+			if (!ReadLineData(buff))
+			{
+				return false;
+			}
+			rString = EncodingTraits< BaseType >::GetString(buff, m_eEncoding);
+			return true;
+		}
+
+		/*! \brief 从文件中读取一行字符串
+			\return 字符串；如果没有读到数据，则抛出异常
+		*/
+		CBufferT< BaseType > ReadString() throw()
+		{
+			CBufferT< BaseType > & rString;
+			if (!ReadString(rString))
+				LgnThrow(E_LGN_IO_EOF);
+			return rString;
+		}
+
+
+		/*! \brief 从文件中读取一行二进制数据
+			\param [out] buff 二进制数据
+			\return true 或 false
+		*/
+		bool ReadLineData(CByteBuffer & buff)
+		{
+			BYTE abCacheBuff[1024];
+			UINT32 unCacheLen = 0, unOffset = 0;
+
+			CFile::Read(abCacheBuff, 1024, unCacheLen);
+			if (unCacheLen == 0)
+			{
+				return false;
+			}
+
+			if (m_eEncoding == EncodingBase::eUnknown)
+			{
+				m_eEncoding = EncodingBase::GetEncoding(abCacheBuff, unCacheLen, unOffset);
+			}
+
+			LPBYTE pbBuffer = abCacheBuff + unOffset;
+			unCacheLen -= unOffset;
+			for (; unCacheLen>0; )
+			{		
+				INT32 nPos = GetLinePosition(pbBuffer, unCacheLen, unOffset, m_eEncoding);
+				if (nPos >= 0)
+				{
+					buff.Append(pbBuffer, nPos);
+					if (unOffset  < unCacheLen)
+						CFile::Seek(-(INT64)(unCacheLen-unOffset));
+					return true;
+				}
+				buff.Append(pbBuffer, unCacheLen);
+
+				pbBuffer = abCacheBuff;
+				unCacheLen = 0;
+				CFile::Read(pbBuffer, 1024, unCacheLen);
+			}
+
+			return (buff.GetLength() > 0);
+		}
+
+		/*! \brief 从二进制数据中获取回车换行位置
+			\param [in] pbData 二进制数据；如果是UNICODE编码，其长度必须为偶数
+			\param [in] unLen 数据 \a pbData 的长度
+			\param [out] unOffset 下行的起始位置
+			\param [in] eEncoding 数据 \a pbData 的编码类型，用于判断回车换行符
+			\return 回车换行位置
+		*/
+		// 
+		static INT32 GetLinePosition(LPBYTE pbData, UINT32 unLen, UINT32 & unOffset, EncodingBase::EncodingType eEncoding)
+		{
+			for (UINT32 i=0; i<unLen; i++)
+			{
+				if (pbData[i] == '\n')
+				{
+					if (eEncoding == EncodingBase::eUtf16LittleEndian)
+					{
+						if (((i & 1) == 0) && (pbData[i+1] == 0))
+						{
+							unOffset = i+2;
+							if ( (i >= 2) && (pbData[i-2] == '\r') && (pbData[i-1] == 0) ) // \x0d\x00\x0a\x00
+								return (i-2);
+							else
+								return (i);
+						}
+					}
+					else if (eEncoding == EncodingBase::eUtf16BigEndian)
+					{
+						if ((i & 1) && (pbData[i-1] == 0))
+						{
+							unOffset = i+1;
+							if ( (i >= 3) && (pbData[i-3] == 0) && (pbData[i-2] == '\r') ) // \x00\x0d\x00\x0a
+								return (i-3);
+							else
+								return (i-1);
+						}
+					}
+					else
+					{
+						unOffset = i+1;
+						if ((i >= 1) && (pbData[i-1] == '\r')) // \x0d\x0a
+							return (i-1);
+						else
+							return i;
+					}
+				} // end if
+			} // end for
+			return -1;
+		}
+
+	protected:
+		EncodingBase::EncodingType m_eEncoding;
+
+	};
+
+	// class rename
+	typedef CStdioFileT< CHAR > CStdioFileA; //!< 类型重定义 LGN::CStdioFileT
+	typedef CStdioFileT< WCHAR > CStdioFileW; //!< 类型重定义 LGN::CStdioFileT
+	typedef CStdioFileT< TCHAR > CStdioFile; //!< 类型重定义 LGN::CStdioFileT
+
+/*! \page stdiofile_example_page CStdioFileT例子
+<pre> 文件存储编码转换和行读取 </pre>
+<pre>
+\#include "lgnbase.h"
+\#include "lgnfile.h"
+
+	//...
+	LGN::CStdioFile file;
+	
+	file.Create(TEXT("1.txt"), LGN::CFile::accessReadWrite, 0, LGN::CFile::openAlways);
+
+	// 编码转换
+	file.SetEncoding(LGN::EncodingBase::eUtf8);
+
+	// 行读取
+	LGN::CStrBuffer strLine;
+	while(file.ReadString(strLine))
+	{
+		::OutputDebugString(strLine.GetCBuffer());
+		::OutputDebugString(TEXT("\r\n"));
+	}
+</pre>
+*/
+
+
+}; // end namespace LGN
+
+
+#endif // #ifndef __LGN_FILE_H__

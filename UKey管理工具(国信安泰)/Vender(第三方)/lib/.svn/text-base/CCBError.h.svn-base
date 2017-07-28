@@ -1,0 +1,78 @@
+#ifndef __CCB_ERROR_H__
+#define __CCB_ERROR_H__
+
+#define CCB_ERR_SUCCESS							0    // 成功
+
+#define CCB_ERR_NO_KEY_CONNECTED				1011 // Key没有插在电脑上
+
+#define CCB_ERR_SOFT_NOT_SETUP					1021 // 没有检测到网银盾驱动
+#define CCB_ERR_SOFT_NO_REG_CONFIG				1022 // 驱动相关注册表项不存在
+#define CCB_ERR_SOFT_INVALID_REG_CONFIG			1023 // 注册表文件损坏
+
+#define CCB_ERR_COM_UNAVAILABLE					1031 // 控件不可用
+#define CCB_ERR_FILE_SYS_NOT_COMPLETE			1041 // Key内部文件不完整
+#define CCB_ERR_GET_DEV_SN_FAILED				1051 // 取序列号失败
+
+#define CCB_ERR_PERSONAL_CERT_UNAVAILABLE		1061 // 个人证书不可使用
+#define CCB_ERR_PERSONAL_CERT_EXPIRE			1062 // 个人证书是否已过期
+#define CCB_ERR_PERSONAL_CERT_NOT_REG			1063 // 个人证书未注册
+
+#define CCB_ERR_SERVICE_NOT_RUN					1071 // 服务没有启动
+#define CCB_ERR_ROOT_CERT_NOT_REG				1081 // 根证书没有注册
+#define CCB_ERR_KEY_LOCKED						1091 // UKey被锁定
+
+#define CCB_ERR_ROOT_CERT_NOT_REG_FIREFOX		1102	// 根证书未注册Firefox浏览器或未通过SSL授权
+#define CCB_ERR_P11_NOT_LOAD_TO_FIREFOX			1104	// P11动态库未加载至Firefox安全设备中
+#define CCB_ERR_MY_CERT_NOT_RET_TO_FIREFOX		1106	// 个人证书未注册至Firefox浏览器中
+
+
+#define CCB_ERR_CHANGE_PIN_CANCEL				3011 // 用户取消修改密码
+#define CCB_ERR_VERIFY_PIN_FAILED				3012 // 密码验证失败
+
+#define CCB_ERR_SHOW_CERT_FAILED				3013 // 个人证书显示失败
+
+#define CCB_ERR_GET_OBJECT_C_FAILED				4011 // 读取证书主题C值失败
+#define CCB_ERR_GET_OBJECT_O_FAILED				4021 // 读取证书主题O值失败
+#define CCB_ERR_GET_OBJECT_OU_FAILED			4031 // 读取证书主题OU值失败
+#define CCB_ERR_GET_OBJECT_CN_FAILED			4041 // 读取证书主题CN值失败
+
+#define CCB_ERR_P10_FAILED_CANCEL_VERIFY_PIN	4051 // 取消输入密码导致P10读取失败
+#define CCB_ERR_P10_FAILED_INVALID_PIN			4052 // 密码验证错误导致P10读取失败
+#define CCB_ERR_P10_FAILED_OTHER_ERROR			4053 // 其他原因导致P10读取失败
+
+#define CCB_ERR_WRITE_P7_FAILED					5011 // 其他原因导致P7写入失败
+#define CCB_ERR_FOMAT_KEY_FAILED				5021 // 格式化KEY失败
+
+#define CCB_ERR_SIGN_FAILED						6001 // 签名失败
+#define CCB_ERR_SIGN_INVAILD_DATA				6002 // 签名数据无效 - 签名数据错误
+#define CCB_ERR_SIGN_INVAILD_LEN				6003 // 签名数据长度错误
+
+#define CCB_ERR_SIGN_STORAGE_ERROR				6004 // 设备存储区错误 -- 设备可能放不下明文数据
+
+#define CCB_ERR_SIGN_INVALID_ALG_ID				6005 // 算法无效
+#define CCB_ERR_SIGN_CANCEL_BY_USER				6006 // 取消签名操作（在签名时提示输入密码，用户点取消时）
+#define CCB_ERR_SIGN_VERIFY_PIN_FAILED			6007 // 输入密码错误，导致签名失败
+
+#define CCB_ERR_FREE_MEM_FAILED					7001 // 释放空间失败
+
+#define CCB_ERR_OTHER_ERROR						8001 // 其他错误 - 自定义的错误代码
+
+
+// firefox的错误代码
+#define CCB_FF_FILE_SYS_NOT_COMPLETE			9301 // USBKEY文件结构不完整 
+#define CCB_FF_IMPORT_P7_CERT					9302 // 写入P7证书失败 
+#define CCB_FF_PRARAM_ERROR						9303 // 参数错误
+#define CCB_FF_NOT_FIND_DEVICE					9304 // 未找到设备
+
+#define CCB_FF_PRARAM_ERROR_OTHER				9305 // 参数错误
+#define CCB_FF_NOT_MATCH_PRI_KEY				9306 // 找不到对应私钥
+
+
+#define CCB_ERR_DLL_LOAD					-101
+#define CCB_ERR_NO_UKEY						-102
+#define CCB_ERR_MULTI_UKEY					-104
+#define CCB_ERR_UKEY_TIMEOUT				-105
+#define CCB_ERR_OTHER						-300
+#define CCB_ERR_DATA_READ					-302
+
+#endif

@@ -1,0 +1,664 @@
+/******************************************************************************
+Module:  Toolhelp.h
+Notices: Copyright (c) 2008 Jeffrey Richter & Christophe Nasarre
+******************************************************************************/
+
+
+#pragma once
+
+
+///////////////////////////////////////////////////////////////////////////////
+#include <windows.h>
+#include <tlhelp32.h>
+#include <tchar.h>
+#include <psapi.h>
+#include "OnKeyLog.h"
+#include "WinVersion.h"
+#pragma comment(lib, "psapi.lib")
+// This macro returns TRUE if a number is between two others
+#define chINRANGE(low, Num, High) (((low) <= (Num)) && ((Num) <= (High)))
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+DWORD g_dwSvrProcessID=0;
+DWORD g_dwIEProcessID=0;
+class CToolhelp {
+private:
+   HANDLE m_hSnapshot;
+
+public:
+   CToolhelp(DWORD dwFlags = 0, DWORD dwProcessID = 0);
+   ~CToolhelp();
+
+   BOOL CreateSnapshot(DWORD dwFlags, DWORD dwProcessID = 0);
+   
+   BOOL ProcessFirst(PPROCESSENTRY32 ppe) const;
+   BOOL ProcessNext(PPROCESSENTRY32 ppe) const;
+   BOOL ProcessFind(DWORD dwProcessId, PPROCESSENTRY32 ppe) const;
+
+   BOOL ModuleFirst(PMODULEENTRY32 pme) const;
+   BOOL ModuleNext(PMODULEENTRY32 pme) const;
+   BOOL ModuleFind(PVOID pvBaseAddr, PMODULEENTRY32 pme) const;
+   BOOL ModuleFind(PTSTR pszModName, PMODULEENTRY32 pme) const;
+   
+   BOOL ThreadFirst(PTHREADENTRY32 pte) const;
+   BOOL ThreadNext(PTHREADENTRY32 pte) const;
+   
+   BOOL HeapListFirst(PHEAPLIST32 phl) const;
+   BOOL HeapListNext(PHEAPLIST32 phl) const;
+   int  HowManyHeaps() const;
+
+   // Note: The heap block functions do not reference a snapshot and
+   // just walk the process's heap from the beginning each time. Infinite 
+   // loops can occur if the target process changes its heap while the
+   // functions below are enumerating the blocks in the heap.
+   BOOL HeapFirst(PHEAPENTRY32 phe, DWORD dwProcessID, 
+      UINT_PTR dwHeapID) const;
+   BOOL HeapNext(PHEAPENTRY32 phe) const;
+   int  HowManyBlocksInHeap(DWORD dwProcessID, DWORD dwHeapId) const;
+   BOOL IsAHeap(HANDLE hProcess, PVOID pvBlock, PDWORD pdwFlags) const;
+
+public:
+   static BOOL EnablePrivilege(PCTSTR szPrivilege, BOOL fEnable = TRUE);
+   static BOOL ReadProcessMemory(DWORD dwProcessID, LPCVOID pvBaseAddress, 
+      PVOID pvBuffer, SIZE_T cbRead, SIZE_T* pNumberOfBytesRead = NULL);
+};
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+inline CToolhelp::CToolhelp(DWORD dwFlags, DWORD dwProcessID) {
+
+   m_hSnapshot = INVALID_HANDLE_VALUE;
+   CreateSnapshot(dwFlags, dwProcessID);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+inline CToolhelp::~CToolhelp() {
+
+   if (m_hSnapshot != INVALID_HANDLE_VALUE)
+      CloseHandle(m_hSnapshot);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+inline BOOL CToolhelp::CreateSnapshot(DWORD dwFlags, DWORD dwProcessID) {
+
+   if (m_hSnapshot != INVALID_HANDLE_VALUE)
+      CloseHandle(m_hSnapshot);
+
+   if (dwFlags == 0) {
+      m_hSnapshot = INVALID_HANDLE_VALUE;
+   } else {
+      m_hSnapshot = CreateToolhelp32Snapshot(dwFlags, dwProcessID);
+   }
+   return(m_hSnapshot != INVALID_HANDLE_VALUE);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+inline BOOL CToolhelp::EnablePrivilege(PCTSTR szPrivilege, BOOL fEnable) {
+
+   // Enabling the debug privilege allows the application to see
+   // information about service applications
+   BOOL fOk = FALSE;    // Assume function fails
+   HANDLE hToken;
+
+   // Try to open this process's access token
+   if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES, 
+      &hToken)) {
+
+      // Attempt to modify the given privilege
+      TOKEN_PRIVILEGES tp;
+      tp.PrivilegeCount = 1;
+      LookupPrivilegeValue(NULL, szPrivilege, &tp.Privileges[0].Luid);
+      tp.Privileges[0].Attributes = fEnable ? SE_PRIVILEGE_ENABLED : 0;
+      AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), NULL, NULL);
+      fOk = (GetLastError() == ERROR_SUCCESS);
+
+      // Don't forget to close the token handle
+      CloseHandle(hToken);
+   }
+   return(fOk);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+inline BOOL CToolhelp::ReadProcessMemory(DWORD dwProcessID, 
+   LPCVOID pvBaseAddress, PVOID pvBuffer, SIZE_T cbRead, 
+   SIZE_T* pNumberOfBytesRead) {
+
+   return(Toolhelp32ReadProcessMemory(dwProcessID, pvBaseAddress, pvBuffer, 
+      cbRead, pNumberOfBytesRead));
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+inline BOOL CToolhelp::ProcessFirst(PPROCESSENTRY32 ppe) const {
+
+   BOOL fOk = Process32First(m_hSnapshot, ppe);
+   if (fOk && (ppe->th32ProcessID == 0))
+      fOk = ProcessNext(ppe); // Remove the "[System Process]" (PID = 0)
+   //LogEntry("ProcessFirst","m_hSnapshot=%X,ppe->th32ProcessID=%d  fOk=%d lassterror=%X",m_hSnapshot,ppe->th32ProcessID,fOk,GetLastError());
+   return(fOk);
+}
+
+
+inline BOOL CToolhelp::ProcessNext(PPROCESSENTRY32 ppe) const {
+
+   BOOL fOk = Process32Next(m_hSnapshot, ppe);
+   if (fOk && (ppe->th32ProcessID == 0))
+      fOk = ProcessNext(ppe); // Remove the "[System Process]" (PID = 0)
+   //LogEntry("ProcessNext","ppe->th32ProcessID=%d  fOk=%d lasterror=%X",ppe->th32ProcessID,fOk,GetLastError());
+
+   return(fOk);
+}
+
+
+inline BOOL CToolhelp::ProcessFind(DWORD dwProcessId, PPROCESSENTRY32 ppe) 
+   const {
+
+   BOOL fFound = FALSE;
+   for (BOOL fOk = ProcessFirst(ppe); fOk; fOk = ProcessNext(ppe)) {
+      fFound = (ppe->th32ProcessID == dwProcessId);
+      if (fFound) break;
+   }
+   return(fFound);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+inline BOOL CToolhelp::ModuleFirst(PMODULEENTRY32 pme) const {
+
+   return(Module32First(m_hSnapshot, pme));
+}
+
+
+inline BOOL CToolhelp::ModuleNext(PMODULEENTRY32 pme) const {
+   return(Module32Next(m_hSnapshot, pme));
+}
+
+inline BOOL CToolhelp::ModuleFind(PVOID pvBaseAddr, PMODULEENTRY32 pme) const {
+
+   BOOL fFound = FALSE;
+   for (BOOL fOk = ModuleFirst(pme); fOk; fOk = ModuleNext(pme)) {
+      fFound = (pme->modBaseAddr == pvBaseAddr);
+      if (fFound) break;
+   }
+   return(fFound);
+}
+
+inline BOOL CToolhelp::ModuleFind(PTSTR pszModName, PMODULEENTRY32 pme) const {
+   BOOL fFound = FALSE;
+   for (BOOL fOk = ModuleFirst(pme); fOk; fOk = ModuleNext(pme)) {
+      fFound = (lstrcmpi(pme->szModule,  pszModName) == 0) || 
+               (lstrcmpi(pme->szExePath, pszModName) == 0);
+      if (fFound) break;
+   }
+   return(fFound);
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+inline BOOL CToolhelp::ThreadFirst(PTHREADENTRY32 pte) const {
+
+   return(Thread32First(m_hSnapshot, pte));
+}
+
+
+inline BOOL CToolhelp::ThreadNext(PTHREADENTRY32 pte) const {
+
+   return(Thread32Next(m_hSnapshot, pte));
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+inline int CToolhelp::HowManyHeaps() const {
+
+   int nHowManyHeaps = 0;
+   HEAPLIST32 hl = { sizeof(hl) };
+   for (BOOL fOk = HeapListFirst(&hl); fOk; fOk = HeapListNext(&hl))
+      nHowManyHeaps++;
+   return(nHowManyHeaps);
+}
+
+
+inline int CToolhelp::HowManyBlocksInHeap(DWORD dwProcessID, 
+   DWORD dwHeapID) const {
+
+   int nHowManyBlocksInHeap = 0;
+   HEAPENTRY32 he = { sizeof(he) };
+   BOOL fOk = HeapFirst(&he, dwProcessID, dwHeapID);
+   for (; fOk; fOk = HeapNext(&he))
+      nHowManyBlocksInHeap++;
+   return(nHowManyBlocksInHeap);
+}
+
+
+inline BOOL CToolhelp::HeapListFirst(PHEAPLIST32 phl) const {
+
+   return(Heap32ListFirst(m_hSnapshot, phl));
+}
+
+
+inline BOOL CToolhelp::HeapListNext(PHEAPLIST32 phl) const {
+
+   return(Heap32ListNext(m_hSnapshot, phl));
+}
+
+
+inline BOOL CToolhelp::HeapFirst(PHEAPENTRY32 phe, DWORD dwProcessID, 
+   UINT_PTR dwHeapID) const {
+
+   return(Heap32First(phe, dwProcessID, dwHeapID));
+}
+
+
+inline BOOL CToolhelp::HeapNext(PHEAPENTRY32 phe) const {
+
+   return(Heap32Next(phe));
+}
+
+
+inline BOOL CToolhelp::IsAHeap(HANDLE hProcess, PVOID pvBlock, 
+   PDWORD pdwFlags) const {
+
+   HEAPLIST32 hl = { sizeof(hl) };
+   for (BOOL fOkHL = HeapListFirst(&hl); fOkHL; fOkHL = HeapListNext(&hl)) {
+      HEAPENTRY32 he = { sizeof(he) };
+      BOOL fOkHE = HeapFirst(&he, hl.th32ProcessID, hl.th32HeapID);
+      for (; fOkHE; fOkHE = HeapNext(&he)) {
+         MEMORY_BASIC_INFORMATION mbi;
+         VirtualQueryEx(hProcess, (PVOID) he.dwAddress, &mbi, sizeof(mbi));
+         if (chINRANGE(mbi.AllocationBase, pvBlock, 
+            (PBYTE) mbi.AllocationBase + mbi.RegionSize)) {
+
+            *pdwFlags = hl.dwFlags;
+            return(TRUE);
+         }
+      }
+   }
+   return(FALSE);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////// End of CToolhelp //////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////// begin of CProcessInfo //////////////////////////////////
+#include <atlcoll.h>
+typedef CAtlList<DWORD> ProcIDList;
+
+class CProcInfo:public CToolhelp
+   {
+public:
+	   inline CProcInfo(DWORD dwFlags = 0, DWORD dwProcessID = 0 ):CToolhelp(dwFlags,dwProcessID)
+	   {		  	 
+	   };
+	   inline ~CProcInfo()
+	   {
+		   m_ProcList.RemoveAll();
+
+	   };
+	/*   inline void init()
+	   {
+		   return;
+	   }
+	  inline  void final()
+	   {
+		   return;
+	   }*/
+	   inline HANDLE GetProcessHandle( DWORD dwProcessID)
+	   {
+		   // Check if we can get information for this process
+		   HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcessID);
+		   if (hProcess == NULL)
+		   {
+			   hProcess =  OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, dwProcessID);
+			   if( hProcess = NULL )
+					return(FALSE);
+		   }		 
+		   return hProcess;
+	   }
+	  inline  DWORD GetProcessId(HANDLE hProcess )
+	   {
+		   DWORD dwProcessId = 0;
+		   return dwProcessId;
+	   }
+	   /*
+	   BOOL GetProcessOwner(HANDLE hProcess, LPTSTR szOwner, size_t cchSize) 
+	   {
+
+		   // Sanity checks
+		   if ((szOwner == NULL) || (cchSize == 0))
+			   return(FALSE);
+
+		   // Default value
+		   szOwner[0] = TEXT('\0');
+
+		   // Gget process token
+		   HANDLE hToken = NULL;
+		   CToolhelp::EnablePrivilege(SE_TCB_NAME, TRUE);
+		   if (!OpenProcessToken(hProcess, TOKEN_QUERY, &hToken)) {
+			   CToolhelp::EnablePrivilege(SE_TCB_NAME, FALSE);
+			   return(FALSE);
+		   }
+
+		   // Obtain the size of the user information in the token.
+		   DWORD cbti = 0;
+		   GetTokenInformation(hToken, TokenUser, NULL, 0, &cbti);
+
+		   // Call should have failed due to zero-length buffer.
+		   if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+			   // Allocate buffer for user information in the token.
+			   PTOKEN_USER ptiUser = 
+				   (PTOKEN_USER)HeapAlloc(GetProcessHeap(), 0, cbti);
+			   if (ptiUser != NULL) {
+				   // Retrieve the user information from the token.
+				   if (GetTokenInformation(hToken, TokenUser, ptiUser, cbti, &cbti)) {
+					   SID_NAME_USE   snu;
+					   TCHAR          szUser[MAX_PATH];
+					   DWORD          chUser = MAX_PATH;
+					   PDWORD         pcchUser = &chUser;
+					   TCHAR          szDomain[MAX_PATH];
+					   DWORD          chDomain = MAX_PATH;
+					   PDWORD         pcchDomain = &chDomain;
+
+					   // Retrieve user name and domain name based on user's SID.
+					   if (
+						   LookupAccountSid(
+						   NULL,
+						   ptiUser->User.Sid,
+						   szUser,
+						   pcchUser,
+						   szDomain,
+						   pcchDomain,
+						   &snu
+						   )
+						   ) {
+							   // build the owner string as \\DomainName\UserName
+							   _tcscpy_s(szOwner, cchSize, TEXT("\\\\"));
+							   _tcscat_s(szOwner, cchSize, szDomain);
+							   _tcscat_s(szOwner, cchSize, TEXT("\\"));
+							   _tcscat_s(szOwner, cchSize, szUser);
+						   }
+				   }
+
+				   // Don't forget to free memory buffer
+				   HeapFree(GetProcessHeap(), 0, ptiUser);
+			   }
+		   }
+
+		   // Don't forget to free process token
+		   CloseHandle(hToken);
+
+		   // Restore privileges
+		   CToolhelp::EnablePrivilege(SE_TCB_NAME, TRUE);
+
+		   return(TRUE);
+	   }
+
+	   BOOL GetProcessOwner(DWORD PID, LPTSTR szOwner, DWORD cchSize)
+	   {
+
+				// Sanity checks
+				if ((PID <= 0) || (szOwner == NULL))
+				return(FALSE);
+
+				// Check if we can get information for this process
+				HANDLE hProcess = 
+				OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, PID);
+				if (hProcess == NULL)
+				return(FALSE);
+
+				BOOL bReturn = GetProcessOwner(hProcess, szOwner, cchSize);
+
+				// Don't forget to release the process handle
+				CloseHandle(hProcess);
+
+				return(bReturn);
+	   }
+	   */	
+
+	   inline BOOL  EnumChildAndFatherProcess(DWORD dwProcessID,BOOL bFlag)
+	   {
+		   EnumChildAndFatherProcess(dwProcessID,bFlag,0);
+		   return TRUE;
+	   }
+	   ///////////////////////////////////////////////////////当前进程id，是否查找父进程，预留
+	   inline ProcIDList & EnumChildAndFatherProcess(DWORD dwProcessID,BOOL bFather,DWORD dwReserve)
+	   {
+		   PROCESSENTRY32 pe = { sizeof(pe) };
+		  // if(!OS::g_WinVersion.IsVista()) //
+		   {
+			   m_ProcList.RemoveAll();
+		   }
+		   CToolhelp tool(TH32CS_SNAPPROCESS,dwProcessID);
+		   BOOL bOk = tool.ProcessFirst(&pe);
+		   int i = 0,count = 0;
+		   char szProcessName[256]={0};
+		   BOOL bSearch=FALSE;
+		   for (; bOk; bOk = tool.ProcessNext(&pe)) 
+		   {
+			   if ( pe.th32ParentProcessID == dwProcessID && dwProcessID != 0 )
+			   {  // 添加子进程	
+				   m_ProcList.AddTail(pe.th32ProcessID);
+				   count++;
+			   }
+			   else if( pe.th32ProcessID == dwProcessID && dwProcessID != 0 )
+			   { // 添加本进程
+				   m_ProcList.AddTail(pe.th32ProcessID);
+				   if(bFather)
+				   {
+					   m_ProcList.AddTail(pe.th32ParentProcessID);
+				   }
+				   count++;
+			   }
+			   else 
+			   {   // 查找孙子进程
+				   //DWORD dwFatherProcessID = pe.th32ParentProcessID;
+				   //if( 0 == dwFatherProcessID )
+					  // continue;
+
+
+				   //if( GetRootProcess(dwProcessID,dwFatherProcessID ) )
+				   //{
+					  // m_ProcList.AddTail(pe.th32ProcessID);
+					  // count++;
+				   //}
+			   }
+			   i++;
+		   }
+		   return m_ProcList;
+	   }
+	   inline BOOL EnumProcessFromID(DWORD dwProcessID)
+	   {
+		   CHAR szProcessName[256]={0};
+		   CHAR szIE[16]={0};
+		   m_ProcList.RemoveAll();
+		   PROCESSENTRY32 pe = { sizeof(pe) };
+		   CToolhelp tool(TH32CS_SNAPPROCESS,dwProcessID);
+		   BOOL bOk = tool.ProcessFirst(&pe);
+		   for (; bOk; bOk = tool.ProcessNext(&pe)) 
+		   {
+			   m_ProcList.AddTail(pe.th32ProcessID);
+		   }
+		   return TRUE;
+		   
+	   }
+
+	   inline BOOL FindProcessFromName(DWORD dwProcessID,CHAR* szProcessName)
+	   {
+		   EnumProcessFromID(dwProcessID);
+		   DWORD dwProID=0;
+		   POSITION pos = m_ProcList.GetHeadPosition();
+		   CHAR szName[256]={0};
+		   for (;pos;)
+		   {
+			   dwProID = (DWORD)m_ProcList.GetNext(pos);
+			   GetProcessName(dwProID,szName);
+			   if(strstr(_strupr(szName),_strupr(szProcessName)))
+			   {
+					 return TRUE;
+			   }
+		   }
+		   return FALSE;
+	   }
+	   inline BOOL EnumChildProcess(DWORD dwProcessID ,DWORD  *pdwProcessID , DWORD  * pdwProcessCount)
+	   {
+		   EnumChildAndFatherProcess(dwProcessID,FALSE);
+		   if(  0 == pdwProcessID )
+		   {
+			   if( pdwProcessCount )
+				   *pdwProcessCount = (DWORD)m_ProcList.GetCount();
+			   else 
+				   return FALSE;
+		   }
+
+		   if( *pdwProcessCount < m_ProcList.GetCount() )
+		   {		
+			   *pdwProcessCount = (DWORD)m_ProcList.GetCount();	   
+			   return FALSE;
+		   }
+
+		   POSITION pos = m_ProcList.GetHeadPosition();
+		   int i = 0; 
+		   for (;pos;i++)
+		   {
+			   pdwProcessID[i] = (DWORD)m_ProcList.GetNext(pos);
+		   }
+		   *pdwProcessCount = (DWORD)m_ProcList.GetCount();	  
+			return TRUE;
+	   }
+	   inline BOOL GetProcessName( DWORD dwProcessID ,CHAR *szProcessName)
+	   {
+		   HANDLE hProcess = OpenProcess( PROCESS_QUERY_INFORMATION |
+			   PROCESS_ALL_ACCESS,
+			   FALSE, dwProcessID );
+		   if( szProcessName)
+			GetModuleFileNameExA(hProcess,NULL,szProcessName,MAX_PATH);
+		   else
+			   return FALSE;
+
+		   return TRUE;
+
+	   }
+	   inline BOOL KillChildProcess( DWORD dwProcessID,DWORD dwCount,BOOL bIsSH )
+	   {
+		   char szProcessName[256]={0};
+		   char szIE[16]={0};
+		   UTL::strcpy(szIE,"IEXPLORE.EXE");
+		   CHAR szSvr[16]={0};
+		   UTL::strcpy(szSvr,"DBSvr_ABC");
+		  /* if(OS::g_WinVersion.IsVista())
+		   {
+			   GetProcessName(dwProcessID,szProcessName);
+			   if(_tcsstr(_strupr(szProcessName),_strupr(szIE)))
+			   {
+				   g_dwIEProcessID=dwProcessID;
+				   if(0==g_dwSvrProcessID)
+				   {//ie是第一个的时候先不杀,因为枚举ie8的时候可能导致当前ie进程重启（原因不详），这样就完了，什么都枚举不到
+					   return TRUE;
+				   }
+			   }
+			   if(_tcsstr(_strupr(szProcessName),_strupr(szSvr)))
+			   {
+				   g_dwSvrProcessID=dwProcessID;
+			   }
+			   //LogEntry("KillChildProcess","g_dwSvrProcessID=%d g_dwIEProcessID=%d,szProcessName=<%s>",g_dwSvrProcessID,g_dwIEProcessID,szProcessName);
+			   if((g_dwSvrProcessID!=0)&&(g_dwIEProcessID!=0))
+			   {
+				   //win7的ie是查找全部的，因为其他ie本来就是一个进程的子进程
+				   g_dwSvrProcessID=0;
+				   g_dwIEProcessID=0;
+				   EnumProcessFromID(g_dwSvrProcessID);
+			   }
+		   }*/
+
+		   //查找目标进程的子进程，孙子进程和父进程
+		   EnumChildAndFatherProcess(dwProcessID,TRUE);
+
+		   POSITION pos = m_ProcList.GetHeadPosition();
+		   for (;pos;)
+		   {
+			   DWORD dwProcessID = (DWORD)m_ProcList.GetNext(pos);
+			   GetProcessName(dwProcessID,szProcessName);
+			   //LogEntry("KillChildProcess","enter pdwProcessID=%X szProcessName=<%s>",dwProcessID,szProcessName);
+			   if(bIsSH)
+			   {//上海的
+				   if(!strstr(_strupr(szProcessName),_strupr(szIE)))
+				   {//不是ie就不关
+					   continue;
+				   }
+			   }
+			   try
+			   {
+				   HANDLE handle = GetProcessHandle(dwProcessID);
+				   if( handle )
+				   {
+					   TerminateProcess(handle,0);
+					   LogEntry("KillChildProcess","process id =%d  szProcessName=<%s> getLasterror=%d",dwProcessID,szProcessName,GetLastError());
+				   }
+			   }
+			   catch (...)
+			   {
+				   LogEntry("KillChildProcess","Catch error LastError=%d",GetLastError());
+			   }
+
+		   }
+		   return FALSE;
+	   }
+
+	   ProcIDList	m_ProcList;
+
+ protected:
+	 inline    BOOL GetRootProcess(DWORD  dwCurProcessID, DWORD   pdwFatherProcessID )
+	 {		
+		 if( pdwFatherProcessID == 0 )
+			 return FALSE;
+
+		 PROCESSENTRY32 pe = { sizeof(pe) };	
+		 CProcInfo  tempObj( TH32CS_SNAPPROCESS, pdwFatherProcessID);
+		 BOOL  bOK =  tempObj.ProcessFind(pdwFatherProcessID,&pe);
+		 if( FALSE == bOK )
+		 {
+			 return FALSE;
+		 }
+		 if(  pe.th32ParentProcessID == dwCurProcessID )
+		 {// 找到父亲进程
+			 return TRUE;
+		 }		
+		 else if( pe.th32ParentProcessID == 0 )
+		 {
+			 // 当前进程就是ＲＯＯＴ Process
+			 return FALSE;
+		 }
+		 else
+		 {
+			 // 递归查找
+			 DWORD dwFatherProcessID =  pe.th32ParentProcessID  ;			   
+			 return  tempObj.GetRootProcess(dwCurProcessID,dwFatherProcessID) ;
+		 }		
+	 }
+
+
+   };
+//////////////////////////////// End of File //////////////////////////////////

@@ -1,0 +1,79 @@
+
+#ifndef __ONKEY_TOKEN_FP_H__
+#define __ONKEY_TOKEN_FP_H__
+
+#include "OnKeyToken.h"
+typedef DWORD (*pfnOnKeyT_ContextInit)();
+typedef DWORD (*pfnOnKeyT_ContextFinal)(BOOL bForce);
+
+typedef DWORD(*pfnOnKeyT_GetSlotList)(BOOL bPresent, ULONG *pdwSlotList, ULONG *pwdCount); //获取设备个数
+
+typedef DWORD(*pfnOnKeyT_GetDeviceInfo)(ULONG slotID, ULONG dwFlags, PS_DEV_CONFIG pInfo);//获取设备信息，包括SN
+
+typedef DWORD (*pfnOnKeyT_VerifyPin)(DWORD dwSlotID, DWORD dwPinType, LPBYTE pbPIN, DWORD dwPINLen);//校验PIN码
+
+typedef DWORD(*pfnOnKeyT_ChangePin)(ULONG slotID, ULONG dwType, LPBYTE pbOldPin, ULONG dwOldPinLen, LPBYTE pbNewPin, ULONG dwNewPinLen); //修改PIN码
+
+typedef DWORD(*pfnOnKeyT_InitToken)(ULONG slotID, PS_DEV_INITINFO pInit); //初始化设备
+
+typedef DWORD(*pfnOnKeyT_ManTokenParam)(DWORD slotID, DWORD dwParam, LPVOID pData);//获取token参数
+
+typedef DWORD(*pfnOnKeyT_Name2SlotID)( IN  LPCTSTR pszName, OUT LPDWORD pdwSlotID ); 
+
+typedef DWORD(*pfnOnKeyT_ClearObjectsLoadType)( IN  DWORD slotID, IN  DWORD dwFlags );
+
+typedef DWORD(*pfnOnKeyT_InitToken)( IN  DWORD slotID, IN OUT PS_DEV_INITINFO pInit );
+
+typedef DWORD(*pfnOnKeyT_ClearToken)( IN  DWORD slotID, IN  DWORD dwFlags );
+
+typedef DWORD(*pfnOnKeyT_ManTokenParam)( IN  DWORD slotID, IN  DWORD dwParam, OUT LPVOID pData );
+
+typedef DWORD(*pfnOnKeyT_GetRandBytes)( IN  DWORD slotID, OUT LPBYTE pRand, IN  DWORD dwRandLen );
+
+typedef DWORD(*pfnOnKeyT_GetDeviceInfo)( IN  DWORD slotID, IN  DWORD dwFlags, OUT PS_DEV_CONFIG pInfo );
+
+typedef DWORD(*pfnOnKeyT_GetObjectList)( IN  DWORD slotID, IN  DWORD dwFlags, OUT  LPDWORD pdwIndexList, IN OUT LPDWORD pdwCount );
+
+typedef DWORD(*pfnOnKeyT_CreateObject)( IN  DWORD slotID, IN  DWORD dwFlags, OUT LPDWORD pdwIndex, IN  LPBYTE pObject, IN  DWORD dwObjectLen, IN  DWORD dwKeyUsed );
+
+typedef DWORD(*pfnOnKeyT_ReadObject)( IN  DWORD slotID, IN  DWORD dwFlags, IN  DWORD dwIndex, OUT LPBYTE pObject, IN OUT LPDWORD pdwObjectLen );
+
+typedef DWORD(*pfnOnKeyT_ReadObjectEx)( IN  DWORD slotID, IN  DWORD dwFlags, OUT LPBYTE pObjects, IN OUT LPDWORD pdwObjectsLen );
+
+typedef DWORD(*pfnOnKeyT_UpdateObject)( IN  DWORD slotID, IN  DWORD dwFlags, IN  DWORD dwIndex, IN  LPBYTE pObject, IN  DWORD dwObjectLen );
+
+typedef DWORD(*pfnOnKeyT_DeleteObject)( IN  DWORD slotID, IN  DWORD dwFlags, IN  DWORD dwIndex, IN  DWORD dwKeyUsed );
+
+typedef DWORD(*pfnOnKeyT_Login)( IN  DWORD slotID, IN  DWORD dwType, IN  LPBYTE pbPin, IN  DWORD  dwPinLen);
+
+typedef DWORD(*pfnOnKeyT_Logout)( IN  DWORD slotID, IN  DWORD dwType);
+
+typedef DWORD(*pfnOnKeyT_ChangePin)( IN  DWORD slotID, IN  DWORD dwType, IN  LPBYTE pbOldPin, IN  DWORD  dwOldPinLen, IN  LPBYTE pbNewPin, IN  DWORD  dwNewPinLen);
+
+typedef DWORD(*pfnOnKeyT_ReloadPin)( IN  DWORD slotID, IN  LPBYTE pbOsPin, IN  DWORD  dwOsPinLen, IN  LPBYTE pbUserPin, IN  DWORD  dwUserPinLen);
+
+typedef DWORD(*pfnOnKeyT_GeneratePairKey)( IN  DWORD slotID, OUT LPDWORD pdwKeyIndex, IN  DWORD dwModBits, IN  LPBYTE pbE, IN  DWORD dwELen);
+
+typedef DWORD(*pfnOnKeyT_ImportPairKey)( IN  DWORD slotID, OUT LPDWORD pdwKeyIndex, IN  DWORD dwKeyFlag, IN  LPBYTE pbKeyStr, IN  DWORD dwKeyLen);
+
+typedef DWORD(*pfnOnKeyT_ExportPairKey)( IN  DWORD slotID, IN  DWORD dwKeyIndex, IN  DWORD dwKeyFlag, OUT LPBYTE pbKeyStr, IN OUT LPDWORD pdwKeyLen);
+
+typedef DWORD(*pfnOnKeyT_RsaEncrypt)( IN  DWORD slotID, IN  DWORD dwKeyIndex, IN  LPBYTE pbData, IN  DWORD dwDataLen, OUT LPBYTE pbEncryptedData, IN OUT  LPDWORD pdwEncryptedDataLen);
+
+typedef DWORD(*pfnOnKeyT_RsaDecrypt)( IN  DWORD slotID, IN  DWORD dwKeyIndex, IN  LPBYTE pbEncryptedData, IN  DWORD dwEncryptedDataLen, OUT LPBYTE pbData, IN OUT  LPDWORD pdwDataLen);
+
+typedef DWORD(*pfnOnKeyT_RsaSign)( IN  DWORD slotID, IN  DWORD dwKeyIndex, IN  DWORD dwHashFlags,  IN  LPBYTE pbData, IN  DWORD dwDataLen, OUT LPBYTE pbSignature, IN OUT  LPDWORD pdwSignatureLen);
+
+typedef DWORD(*pfnOnKeyT_RsaVerify)( IN  DWORD slotID, IN  DWORD dwKeyIndex, IN  DWORD dwHashFlags,  IN  LPBYTE pbSignature, IN  DWORD pdwSignatureLen, OUT LPBYTE pbData, IN OUT  LPDWORD pdwDataLen);
+
+typedef DWORD(*pfnOnKeyT_DevAlgCalc)(  IN  DWORD dwSlotID, IN  BYTE bEncrypt, IN  DWORD dwMode, IN  LPBYTE pbKey, IN  LPBYTE pbIn, IN  DWORD dwInLen, OUT  LPBYTE pbOut, OUT  DWORD *pdwOutLen);
+
+typedef DWORD(*pfnOnKeyT_Ex_SelectSlot)( IN  DWORD dwFlags, IN  LPVOID pfnShowDialog, OUT LPDWORD pSlotID);
+
+typedef DWORD(*pfnOnKeyT_Ex_InputPasswd)( IN  DWORD dwFlags, IN  LPVOID pfnShowDialog, OUT DWORD dwSlotID, OUT LPBYTE pbPin, OUT LPDWORD pdwPinLen);
+
+typedef DWORD(*pfnOnKeyT_Ex_DisplayInfo)( IN  DWORD dwFlags, IN  LPVOID pfnShowDialog, OUT DWORD dwSlotID );
+
+//ECC服务函数
+
+#endif

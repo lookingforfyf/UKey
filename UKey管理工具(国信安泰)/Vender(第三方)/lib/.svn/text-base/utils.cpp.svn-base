@@ -1,0 +1,345 @@
+// Utils.cpp
+
+#include "stdafx.h"
+#include "utils.h"
+
+#pragma comment(lib, "shlwapi.lib")
+
+
+#define UTL_SAFE_STR(s) ((s)? (s) : c_strNull)
+namespace UTL
+{
+	// class CBuffer
+	LPCSTR c_strNull = "";
+
+	void CBuffer::InitNull()
+	{
+		_data = (LPVOID)c_strNull;
+		_dataLength = 0;
+		_allocLength = 0;
+	}
+
+	CBuffer::CBuffer()
+	{
+		InitNull();
+	}
+
+	CBuffer::CBuffer(LPCSTR str)
+	{
+		InitNull();
+		Copy(str);
+	}
+
+	CBuffer::CBuffer(LPCVOID data, UINT size)
+	{
+		InitNull();
+		Realloc(size);
+		if (data)
+		{
+			UTL::memcpy(_data, data, size);
+			_dataLength = size;
+		}
+	}
+
+	CBuffer::CBuffer(const CBuffer & other)
+	{
+		InitNull();
+		if (Realloc(other._dataLength))
+		{
+			UTL::memcpy(_data, other._data, other._dataLength);
+			_dataLength = other._dataLength;
+		}
+	}
+
+	CBuffer::~CBuffer()
+	{
+		if (_allocLength)
+			UTL::free(_data);
+	}
+
+	bool CBuffer::Realloc(UINT size)
+	{
+		size += 2; // 
+		UINT nAllocLength = _allocLength;
+		if (nAllocLength == 0)
+		{
+			nAllocLength = size;
+			_data = UTL::malloc(nAllocLength);
+		}
+		else if (nAllocLength < size)
+		{
+			while (nAllocLength < size)
+				nAllocLength = (nAllocLength << 1);
+			_data = UTL::realloc(_data, nAllocLength);
+		}
+		else
+		{
+			//UTL::memset(((LPSTR)_data)+_dataLength, 0, _allocLength-_dataLength);
+			return true;
+		}
+
+		if (_data == NULL)
+		{
+			_data = (LPVOID)c_strNull;
+			_allocLength = 0;
+			return false;
+		}
+		else
+		{
+			UTL::memset(((LPSTR)_data)+_allocLength, 0,  nAllocLength-_allocLength);
+			_allocLength = nAllocLength;
+			return true;
+		}
+	}
+
+	bool CBuffer::Accept(CBuffer & other)
+	{
+		if (_allocLength)
+			UTL::free(_data);
+		_data = other._data;
+		_dataLength = other._dataLength;
+		_allocLength = other._allocLength;
+		// set null
+		other.InitNull();
+		return true;
+	}
+
+	LPVOID CBuffer::Detach() // 外部必须释放该资源
+	{
+		LPVOID temp = _data;
+		InitNull();
+		return temp;
+	}
+
+	LPVOID CBuffer::Append(LPCVOID data, UINT size)
+	{
+		if (_data != data)
+		{
+			int newLen = _dataLength + size;
+			if (Realloc(newLen))
+			{
+				LPSTR ptr = (LPSTR)_data;
+				UTL::memcpy(ptr+_dataLength, data, size);
+				ptr[newLen] = '\0';
+				_dataLength = newLen;
+			}
+		}   
+		return (LPSTR)_data;
+
+	}
+
+	LPSTR CBuffer::NCopy(LPCSTR string2, size_t count)
+	{
+		if (_data != string2)
+		{
+			if (Realloc((UINT)count))
+			{
+				UTL::strncpy((LPSTR)_data, UTL_SAFE_STR(string2), count+1); // api
+				*(((LPSTR)_data) + count) = '\0';
+				_dataLength = (UINT)count;
+			}
+
+		}
+		return (LPSTR)_data;
+	}
+
+	LPSTR CBuffer::Copy(LPCSTR string2)
+	{
+		if (_data != string2)
+		{
+			int newLen = UTL::strlen(string2);
+			if (Realloc(newLen))
+			{
+				UTL::strcpy((LPSTR)_data, UTL_SAFE_STR(string2));
+				_dataLength = newLen;
+			}
+		}
+		return (LPSTR)_data;
+	}
+
+	LPSTR CBuffer::Cat(LPCSTR string2)
+	{
+		Append(string2, UTL::strlen(string2));
+		return (LPSTR)_data;
+	}
+
+	LPSTR CBuffer::InsertStr(LPCSTR str, UINT numChars, UINT pos, bool forceUseNumChars)
+	{
+		if (!forceUseNumChars)
+			numChars = min(numChars, (UINT)UTL::strlen(str));
+		if (!numChars)
+			return (LPSTR)_data;
+
+		UINT newLen = _dataLength + numChars;
+		if (Realloc(newLen))
+		{
+			LPSTR ptr = (LPSTR)_data;
+			UTL::memmove(ptr + pos+numChars, ptr + pos, _dataLength-pos+1);
+			UTL::memcpy(ptr + pos, UTL_SAFE_STR(str), numChars);
+			_dataLength = newLen;
+		}
+		return (LPSTR)_data;
+	}
+
+	LPSTR CBuffer::InsertChr(char ch, UINT pos)
+	{
+		if (Realloc(_dataLength+1))
+		{
+			LPSTR ptr = (LPSTR)_data;
+			UTL::memmove(ptr + pos+1, ptr + pos, _dataLength-pos+1);
+			ptr[pos] = ch;
+			_dataLength ++;
+		}
+		return (LPSTR)_data;
+	}
+
+	UINT CBuffer::ReplaceChr(char replaceCh, char withCh, UINT start)
+	{
+		UINT count = 0;
+		if (start < _dataLength)
+		{
+			LPSTR p = (LPSTR)_data + start;
+			while (p = UTL::strchr(p, replaceCh))
+			{
+				*(p++) = withCh;
+				count++;
+			}
+		}
+		return count;
+	}
+
+	CBuffer & CBuffer::Format(LPCSTR fmt, ... )
+	{
+		va_list marker;
+		va_start(marker, fmt );
+
+		FormatV(fmt, marker);
+
+		va_end( marker );
+		return *this;
+	}
+
+	CBuffer & CBuffer::FormatV(LPCSTR fmt, va_list args)
+	{
+		if (_data != fmt)
+		{
+			Realloc(1028);
+			_dataLength = UTL::vsnprintf((LPSTR)_data, _allocLength-1, fmt, args);
+		}
+		return *this;
+	}
+
+	//int			StrToInt(int base=10);
+	//LPCSTR		IntToStr(int value, int base=10);
+
+	CBuffer & CBuffer::Trim()
+	{
+		if (_dataLength > 0)
+		{
+			LPSTR ptr = (LPSTR)_data;
+			UINT i = _dataLength -1;
+			for (; ptr[i] == ' '; i--);
+				ptr[i+1] = '\0';
+			for (i = 0; ptr[i] == ' '; i++)
+				;
+			UTL::memmove(ptr, ptr + i, _dataLength - i +1);
+		}
+		return *this;   
+	}
+
+	bool CBuffer::Find(LPCSTR string, UINT &found, UINT start) const
+	{
+		if (string && start < _dataLength)
+		{
+			LPSTR ptr = (LPSTR)_data;
+			LPCSTR p = UTL::strstr(ptr + start, string);
+			if (p) 
+			{
+				found = (UINT) (p - ptr);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool CBuffer::Find(char ch, UINT &found, UINT start) const
+	{
+		if (start < _dataLength)
+		{
+			LPSTR ptr = (LPSTR)_data;
+			LPCSTR p = UTL::strchr(ptr + start, ch);
+			if (p)
+			{
+				found = (UINT) (p - ptr);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool CBuffer::ReverseFind(char ch, UINT &found) const
+	{
+		LPSTR ptr = (LPSTR)_data;
+		LPCSTR p = UTL::strrchr(ptr, ch);
+		if (p)
+		{
+			found = (UINT) (p - ptr);
+			return true;
+		}
+		return false;
+	}
+
+	bool CBuffer::FindOneOf(LPCSTR set, UINT &found) const
+	{
+		found = (UINT)UTL::strcspn((LPSTR)_data, UTL_SAFE_STR(set));
+		return (found < _dataLength);
+	}
+
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	char & CBuffer::operator[](UINT index) const
+	{
+		static char x = '\0';
+		return (index >= _dataLength)? x : ((LPSTR)_data)[index];
+	}
+
+	char & CBuffer::operator[](int index) const
+	{
+		static char x = '\0';
+		return (index < 0 || UINT(index) >= _dataLength)? x : ((LPSTR)_data)[index];
+	}
+
+	CBuffer & CBuffer::operator=(const CBuffer & buf)
+	{
+		if (this != &buf)
+		{
+			if (Realloc(buf._dataLength))
+			{
+				UTL::memcpy(_data, buf._data, buf._dataLength);
+				_dataLength = buf._dataLength;
+			}
+		}
+		return *this;
+	}
+
+	CBuffer & CBuffer::operator=(LPCSTR str)
+	{
+		if (str != _data)
+		{
+			int newLen = UTL::strlen(str);
+			if (Realloc(newLen))
+			{
+				UTL::strcpy((LPSTR)_data, UTL_SAFE_STR(str));
+				_dataLength = newLen;
+			}
+		}
+		return *this;
+	}
+
+	CBuffer & CBuffer::operator+=(LPCSTR str)
+	{
+		Cat(str);
+		return *this;
+	}
+}; // namespace UTL
+

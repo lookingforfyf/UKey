@@ -1,0 +1,555 @@
+#ifndef _ONKEY_DEVICE_H_
+#define _ONKEY_DEVICE_H_
+
+#include "pkcs11t.h"
+#include "pkcs11t_ext.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
+#ifndef ONKEY_FUNCTION_API
+  #ifdef ONKEY_FUNCTION_EXPORTS
+	#define ONKEY_FUNCTION_API 
+  #else
+	#define ONKEY_FUNCTION_API 
+  #endif
+#endif
+
+// mask
+#define ONKEY_MASK_HIGH				0xFFFF0000
+#define ONKEY_MASK_LOW				0x0000FFFF
+
+// error
+#define ONKEY_ERR_SUCCESS			0	// NO_ERROR
+#define ONKEY_ERR_NOREADER			0x8010002E
+#define ONKEY_ERR_INVAILDPARAM		0xE0110001
+#define ONKEY_ERR_INVAILDDATA		0xE0110002
+#define ONKEY_ERR_NOTSUPPORTED		0xE0110003
+#define ONKEY_ERR_OUTMEMORY			0xE0110004
+#define ONKEY_ERR_PININVAID			0xE0110005	// TOKEN
+#define ONKEY_ERR_RSA2048_VALIDATION	0xE0110006
+
+#define ONKEY_ERR_PININCORR_B		0xE0110010	// TOKEN
+#define ONKEY_ERR_PININCORR_E		0xE011001E	// TOKEN
+
+#define ONKEY_ERR_PINLOCKED			0xE0110010	// TOKEN
+#define ONKEY_ERR_CANCEL			0xFFFFFF9C	//用户取消了操作 -100
+#define ONKEY_ERR_TIMEOUT			0xE011000F	//用户超时
+#define ONKEY_ERR_FAIL				0xE011FFFF
+
+#define ONKEY_ERR_IILEAGEL_MSG		0xE0120000	// 关键签名数据非法 - 无可显示数据
+#define ONKEY_ERR_IILEAGEL_CODE		0xE0120001	// 关键签名数据编码非法 - 目前只支持 GBK，UTF-8，Unicode
+#define ONKEY_ERR_BAD_DATA			0xE0120002	// 关键签名数据非法 - SN01+Len+Data,SN/DN等tag错误，或者len和数据对应不上
+#define ONKEY_ERR_BAD_LEN			0xE0120003	// 关键签名数据长度错误 - 参与运算的长度有效范围：25-1024
+
+#define ONKEY_ERR_SWSTATUS			0xE0E00000
+#define ONKEY_ERR_EXTAUTH			0xE0E06300
+#define ONKEY_ERR_UNVERIRYPIN		0xE0E06982
+
+#define ONKEY_ERR_OUTMEMORY2		0xE0E06B00	// 读写空间不足 ljc 2008-07-12
+
+#define ONKEY_ERR_IS_SW(ret)		(((ret) & ONKEY_MASK_HIGH) == ONKEY_ERR_SWSTATUS)
+
+
+// user type；附属类型：pin type
+#define ONKEY_TYPE_OS				1
+#define ONKEY_TYPE_USER				2
+
+
+// file index
+#define ONKEY_FILE_NONE				0
+#define ONKEY_FILE_ATTR				0xA312
+#define ONKEY_FILE_PRIVATE			0xA313
+#define ONKEY_FILE_PUBLIC			0xA314
+#define ONKEY_FILE_RESET_DF			0xDDFF
+
+enum{
+	ONKEY_BOT_COM_TYPE = 0x00,		// BOT通讯
+	ONKEY_HID_COM_TYPE = 0x80,		// HID通讯
+	ONKEY_CCID_COM_TYPE = 0x40		// CCID通讯
+};
+
+// param type
+#define ONKEY_PARAM_SET_LABEL						1	// 修改卷标，长度=32
+#define ONKEY_PARAM_SET_PINTIMEOUT					2	// PIN超时
+#define ONKEY_PARAM_SET_MAXCERTNUM					3	// 存储最大证书数量
+#define	ONKEY_PARAM_GET_OSPINATTR					4	// 管理员密码信息，MAXLEN+MAXTIME+CURTIME+RFU
+#define	ONKEY_PARAM_GET_USERPINATTR					5	// 用户密码信息，MAXLEN+MAXTIME+CURTIME+MODE+STATUS
+#define	ONKEY_PARAM_SET_OS_VERSION					6   // 设置操作系统，繁体，简体，英文
+#define	ONKEY_PARAM_SET_FLAGS						7	// 修改P11
+#define ONKEY_PARAM_SET_OPENWEB						8	// 1-开启，0-关闭
+
+//icbc
+#define ONKEY_PARAM_GET_KEY_PKC					13	// 获取密文公钥
+#define ONKEY_PARAM_GET_KEY_PKC_PLAIN			14  //获取明文公钥
+#define ONKEY_PARAM_SET_ADMIN_KEY 				16	// 设置管理密钥
+#define ONKEY_PARAM_DEL_COS_PRIKEY 				20	// 删除cos密钥对，需要按钮确认
+
+#define ONKEY_PARAM_SET_LANGID	 				21	//设置语言
+#define ONKEY_PARAM_SET_ENCODE	 				22	//设置编码
+#define ONKEY_PARAM_GET_CUR_LANGID				23	//获取当前语言
+#define ONKEY_PARAM_GET_CUR_ENCODE				24	//获取当前编码
+#define ONKEY_PARAM_GET_SUPPORT_LANGID	 		25	//获取支持的语言
+#define ONKEY_PARAM_GET_SUPPORT_ENCODE	 		26	//获取支持的编码
+
+#define ONKEY_PARAM_EXEC_QUERYCLOSE					99	// 请求关闭设备句柄
+
+#define ONKEY_PARAM_EXEC_PAD_CHANGEPIN1				101	// HIP修改密码过程1：输入旧密码
+#define ONKEY_PARAM_EXEC_PAD_CHANGEPIN2				102 // HIP修改密码过程2：输入新密码
+#define ONKEY_PARAM_EXEC_PAD_CHANGEPIN3				103 // HIP修改密码过程3：验证新密码，并执行修改密码指令
+#define ONKEY_PARAM_EXEC_PAD_INITPIN				104 // HIP初始化密码
+
+//#define ONKEY_PARAM_EXEC_PAD_INPUTPIN				105
+#define ONKEY_PARAM_EXEC_PAD_VERIFYPIN				111	// HIP校验密码
+#define ONKEY_PARAM_WRITE_UNLOCK_KEY				121 // WriteKey
+#define ONKEY_PARAM_UNLOCK_KEY						122 // ReloadPin
+
+#define ONKEY_PARAM_SET_WRITE_ISO_FLAG				202 // 修改ISO文件写权限
+#define ONKEY_PARAM_GET_INNER_SERIALNUM				203 // 获取内部序列号
+
+
+#define ONKEY_PARAM_SET_KEY_SEC_MODE				301 // 设置Key的安全模式(两种模式：安全模式和普通模式)
+#define ONKEY_PARAM_SET_KEY_DEV_TYPE				302 // 设置Key的HID/BOT通讯类型
+#define ONKEY_PARAM_GET_KEY_DEV_TYPE				303	// 读取当前Key的设备类型
+
+#define ONKEY_PARAM_GET_KEY_STATUS					304	// 读取当前Key的状态
+
+// input pin mode
+#define ONKEY_MODE_KEYBOARDINPUTPIN					0	// 键盘输入口令
+#define ONKEY_MODE_HIPINPUTPIN						1	// HID输入口令
+#define ONKEY_MODE_FINGERPRINT						2	// 指纹验证
+
+// close device
+#define ONKEY_CLOSEDEVICE_CLEAR_PARAM				0x00000001 // 清除通讯参数
+#define ONKEY_CLOSEDEVICE_SESSION_LOGOUT			0x00000002 // 通讯通道登出
+
+
+// key flags
+//#define ONKEY_FLAG_KEY_EXCHANGE					0x01	// 交换密钥
+//#define ONKEY_FLAG_KEY_SIGN						0x02	// 签名密钥
+#define ONKEY_FLAG_KEY_PRIVATE						0x00010000	// 私钥-导出和导入
+#define ONKEY_FLAG_KEY_PUBLIC						0x00020000	// 公钥-导出和导入
+#define ONKEY_FLAG_KEY_CIPHER						0x00040000	// 加密的密钥-导出
+
+#define ONKEY_FLAG_KEY_PUB_ECC						0x00080000	//导出sm2公钥
+
+// hash flags
+#define ONKEY_FLAG_HASH_IN_MSGMD5					0x00010000	// 计算签名-输入源数据(MD5)
+#define ONKEY_FLAG_HASH_IN_MSGSHA1					0x00020000	// 计算签名-输入源数据(SHA1)
+#define ONKEY_FLAG_HASH_IN_MSGSHA256				0x00040000	// 计算签名-输入源数据(SHA256)
+#define ONKEY_FLAG_HASH_IN_MSGSHA384				0x00080000	// 计算签名-输入源数据(SHA384)
+#define ONKEY_FLAG_HASH_IN_MSGSHA512				0x00100000	// 计算签名-输入源数据(SHA512)
+#define ONKEY_FLAG_HASH_IN_MSGMD5SHA				0x00200000	// 计算签名-输入源数据(SHA1MD5)
+#define ONKEY_FLAG_HASH_IN_RSAPKCS					0x00400000	// CKM_RSA_PKCS, 不需要做HASh
+#define ONKEY_FLAG_HASH_IN_MSG_MARK					0x00FF0000	// 计算签名-输入源数据(所有摘要)
+
+#define ONKEY_FLAG_HASH_NO_OID						0x20000000	// 计算签名-
+
+
+//about ssf33 and scb2 definition
+#define ENCRYPT_TYPE				0x01
+#define DECRYPT_TYPE				0x02
+
+//33算法分组长度
+#define SSF33_BLOCK_LEN				0x10
+//33算法密钥长度
+#define SSF33_KEY_LEN				0x10
+//天地融193I3B cos一次最大加解密的长度 1024 - 5(apdu) - 16(key)
+//#define SSF33_BLOCK_TDR_LEN			992
+//#define SSF33_BLOCK_TDR_LEN			992
+
+//SCB2算法分组长度
+#define SCB2_BLOCK_LEN				0x10
+
+//scb2算法密钥长度
+#define SCB2_KEY_LEN				0x20
+//天地融193A3 I3B cos一次最大加解密的长度  1024 - 5(apdu) - 32(key)
+//#define SCB2_BLOCK_TDR_LEN			976
+//#define SCB2_BLOCK_TDR_LEN			976
+
+
+#define SM1_BLOCK_LEN				0x10
+
+
+#define SM1_KEY_LEN					0x20
+
+#define SM2_BLOCK_LEN				16
+#define SM2_C1C3_LEN				97
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+// COS
+#pragma pack(4)
+//此结构为COS内部结构
+typedef char C_CHAR;
+typedef unsigned char C_BYTE;
+typedef unsigned short C_USHORT;
+typedef short C_SHORT;
+typedef unsigned long C_ULONG;
+typedef long int C_LONG;
+
+#define COS_EX_SECURE_COMM			0x80
+#define COS_EX_SECURE_PIN_ID_MASK	0x03 // 用哪条Pin来更新此安全设置
+#define	COS_DEV_MODULE_LEN			4
+#define	COS_HID_COMM_MODE			0x80
+#define	COS_WORK_MODE				0x40
+#define	COS_GBKMATRIX_VALID_MODE	0x20
+#define	COS_GBK18030_VALID_MODE		0x10 
+#define COS_ISO_WRITE_ENABLED		0x80
+
+typedef struct _S_COSVERSTRUCT
+{
+	C_BYTE nMajor;
+	C_BYTE nMinor;
+	C_BYTE nBuild;
+	C_BYTE rfu;
+}S_COSVERSTRUCT, *PS_COSVERSTRUCT;
+
+typedef struct _S_KEYSECURECFGSTRUCT
+{
+	C_BYTE cfg1; 
+	C_BYTE rfu[3];
+}S_KEYSECURECFGSTRUCT;
+
+typedef struct _S_SYSVERSIONSTRUCT
+{
+	C_CHAR model[COS_DEV_MODULE_LEN];// 硬件型号 19A3,19I3,19V3,19D3,19F3;A131,I131 首位字母小写表示+B
+	S_COSVERSTRUCT ver;  // Cos版本号
+	S_KEYSECURECFGSTRUCT serCfg;
+	C_BYTE   date[4]; // BUILD日期
+}S_SYSVERSIONSTRUCT;
+
+// 以上结构及类型定义为Cos原来已有的，所以结构 DeviceInfoStruct 中的部分成员以及类型做了部分改动。
+//结构 SysCfg4LHWStruct 是为硬件提供的信息，应用层可以不关心。
+typedef struct _S_SYSCFG4LHWSTRUCT
+{
+	//b7: 通讯模式，1: Hid方式；0: BOT方式
+	//b6:工作模式，1: 生产模式; 0: 用户模式
+	//b5:字库有效模式，1:字库有效；0:字库无效
+	//b4:字库模式，1:GBK18030;   0: GBK字库
+	//b3~b0: RFU
+	C_BYTE nHardwareMode;   
+	C_BYTE nIsoWriteMode;     //b7: 1: 允许写；0: 禁止写入
+	//b6~b0: RFU
+	C_USHORT nIsoCRC;
+	C_ULONG nIsoLen;
+}S_SYSCFG4LHWSTRUCT;
+
+typedef struct _S_SYSGLOBALSTATUSSTRUCT
+{
+	C_BYTE flagChangePhase; //Added by zyt
+	C_BYTE LifeCycle;				//生命周期状态字节[注意：因为需要最后编程，所以此变量必须放在最后]
+	C_BYTE CritSignWaitLimit;			// 上电后 （CritSignWaitLimit×0.1)秒内，不准做关键交易签名，防止瞬间攻击 
+	C_BYTE MiscCfgRfu :6;
+	C_BYTE MiscCfgBtnFunctoion :1;   // 0x40 按钮功能启动，否则作为A来使用，不查按钮状态
+	C_BYTE MiscCfgBtnHwSupport :1;   // 0x80 硬件是否带有按钮支持
+} S_SYSGLOBALSTATUSSTRUCT;
+
+typedef struct S_COSINFO
+{
+	C_USHORT   m_wLen;          // 结构长度: 两个字节
+	C_USHORT   m_wVersion;             // 结构版本: 两个字节
+
+	S_SYSVERSIONSTRUCT m_SysVersion;
+
+	C_BYTE m_SerialNum[16];     //  序列号 
+	C_BYTE m_ChipNum[16];       //  芯片号 
+	C_BYTE m_ShellNum[16];     //  外壳号 
+	struct SupportAlg
+	{
+		C_ULONG bSupportCbc:  1 ;   // 0 (1Bit) cos 是否内部支持CBC 
+		C_ULONG bSupporttDirectKey:  1 ;   // 0 cos 是否支持密钥和明文(密文)一起传输
+		C_ULONG bSupportSCB2: 1 ;   // 0  (1Bit) cos 是否内部支持33 
+		C_ULONG bSupport33  : 1 ;   // 0  (1Bit) cos 是否内部支持scb2 
+		C_ULONG bSupportRsaBit: 4;   // 4 (4Bit ) Rsa bit ,以256bit为基数
+		C_ULONG bSupportMD5 : 1;  // 1  是否支持MD5
+		C_ULONG bSupportSHA1  : 1;  // 1  是否支持SHA-1
+		C_ULONG bSupportHiPRand :1;     // 是否支持Hip输入扰乱
+		C_ULONG bReserver      : 21;  // 0  保留 21 bit
+	}m_SupportAlg;
+	C_ULONG m_dwSpace;                 // 剩余空间
+	struct APDU 
+	{
+		C_BYTE bSupportExt :1;   // 0 ,是否支持扩展APDU
+		C_BYTE bBuffSize  :7;   // apdu 缓冲区大小，以128字节为倍数，最大为128*128=16k
+	}m_APDU;
+	C_BYTE m_miscCfg;			// Bit_0==1 表示初始化为根据Pin的模式传入Pin； bit_1==1表示加密通讯
+	C_USHORT m_SupportCommTable;	//用于表示支持的通讯类型， b0：HID， b1：BOT，b2：CCID
+	S_SYSCFG4LHWSTRUCT  cfg4LHW;   // 
+	S_SYSGLOBALSTATUSSTRUCT globalStatus;
+}S_COSINFO, *PS_COSINFO;
+#pragma pack()
+
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+//应用初始化信息
+// fileid= 0xA310，AC：只读
+#pragma pack(1)
+
+typedef struct _S_APPINFO_R
+{
+	WORD   		m_wLen;							//该结构大小
+	WORD		m_wVersion;						//结构版本，两个字节
+	BYTE		m_customID[4];					//客户号
+	BYTE		m_MaxKeyPairNum;				//客户可用的最大密钥对的个数
+	BYTE		m_ManagerKeyPairPos;			//管理密钥对开始编号
+
+	//PIN
+	DWORD		SecurityAlwaysNeedPin: 1;		//每次私钥操作总是需要验证口令
+	DWORD		SupportHipInputPin:1;			//支持HIP输入口令
+	DWORD		SupportKeyBoardInputPin:1;		//支持键盘输入口令
+	//按钮
+	DWORD		SecurityAlwaysNeedBotton:1;		//每次私钥操作都需要按钮，生成密钥对除外
+	DWORD		Md5CommonSignClosed:	 1;		//关闭md5普通签名
+	DWORD		SHA1CommonSignClosed:	 1;		//关闭sha1普通签名
+	DWORD		MD5SHA1CommonSignClosed: 1;		//关闭md5sha1普通签名
+	//导入密钥对
+	DWORD		SupportPriKeyImport:1;			//是否支持私钥导入
+	//解密
+	DWORD		SupportPriKeyDecrypt:1;			//是否支持私钥解密
+	//签名
+	DWORD		NeedCrucialSign:1;				//是否允许关键签名
+	DWORD		NeedSignedData:1;				//是否允许传入原始数据 sign
+	//应用初始化保护模式
+	DWORD		AppFormatSafeMode:1;			//0 自由，1 key
+	DWORD		AppFormatResetSOPIN:1;			//初始化是否复位管理员密码（另个意思：是否有管理员密码）
+	//密码是否要做MD5
+	DWORD		SupportUserPinMD5:1;
+	DWORD		SupportSoPinMD5:1;
+	// 
+	BYTE				m_DevFlags;
+	BYTE				m_UnlockFlags;  // 
+	BYTE				m_Reserver[2];
+	//DWORD		m_Reserver;
+}S_APPINFO_R, *PS_APPINFO_R;
+
+//////////////////////////////////////////////
+// m_UnlockFlags
+//////////////////////////////////////////////
+#define UNLOCK_RANDOM_ENABLE        0x01   // MAC 要随机数
+
+// fileid = 0xA311 , AC ：读写
+typedef struct _S_APPINFO_RW
+{
+	WORD   m_wLen;
+	WORD   m_wCheckSum;							// 校验位
+	CK_TOKEN_INFO m_TokenInfo;
+	// 自定义
+	DWORD	m_timeout;							//以秒为单位
+	DWORD	SecurityAlwaysNeedPin:1;			//应用层每次私钥操作总是需要验证口令。
+	DWORD	InputPinMode:3;						//密码输入模式	0-键盘，1-HIP		
+	DWORD	RFU:4;
+	DWORD	InsertUKeyOpenWeb:1;
+	DWORD	m_MaxKeyPairNum;					//最大密钥对的个数（证书）
+	WORD	m_Reserver1;						//
+	DWORD	m_Reserver2;						//
+}S_APPINFO_RW, *PS_APPINFO_RW;
+
+// 密码属性
+typedef struct _S_PIN_ATTR
+{
+	BYTE btMaxLen;
+	BYTE btMaxTime;
+	BYTE btMinTime;
+	BYTE btMode; // 0-明文，1-DES，2-HIP；99-XOR
+}S_PIN_ATTR, *PS_PIN_ATTR;
+
+// 设备信息
+typedef struct _S_DEV_CONFIG
+{
+	DWORD dwSize;
+	union
+	{
+		S_COSINFO sCOSInfo;			//cos dev info; size=0x58
+		BYTE baCOSInfoBuff[0x80];
+	};
+	union
+	{
+		S_APPINFO_R sAppInfoR;		//a310 file info 只读; size=0x12
+		BYTE baAppInfoRBuff[0x20];
+	};
+	union
+	{
+		S_APPINFO_RW sAppInfoRW;	//a311 file info 读写; size=0xB8
+		BYTE baAppInfoRWBuff[0xE0];
+	};
+	union
+	{
+		S_PIN_ATTR sUserPinAttr;
+		BYTE baUserPinAttr[4];		//maxlen 16, maxtime, remaintime
+	};
+	union
+	{
+		S_PIN_ATTR sSoPinAttr;
+		BYTE baSoPinAttr[4];		//maxlen 16, maxtime, remaintime
+	};
+}S_DEV_CONFIG, *PS_DEV_CONFIG;
+
+
+typedef int (*pfnALG_Digest)(LPBYTE pbData, DWORD dwLength, LPBYTE pbDigest, DWORD dwFlags);
+typedef int (*pfnALG_Encrypt)(LPBYTE pbData, DWORD dwLength, LPBYTE pbKey, DWORD dwFlags);
+typedef int (*pfnALG_Decrypt)(LPBYTE pbData, DWORD dwLength, LPBYTE pbKey, DWORD dwFlags);
+typedef int (*pfnOssl_RsaPublic_crypt)(LPBYTE pbKeyN, DWORD dwKeyNLen, LPBYTE pbKeyE, DWORD dwKeyELen, 
+						 LPBYTE pbIn, DWORD nInLen, LPBYTE pbOut, DWORD dwType);
+typedef int (*pOssl_GetBytes)(LPVOID pSeed, DWORD nSeedLen, LPBYTE pRand, DWORD nRandLen);
+
+typedef struct _S_ALG_FUNCTION_LIST
+{
+	DWORD version;
+	//DWORD dwRfu;
+	pfnALG_Digest Digest;
+	pfnALG_Encrypt Encrypt;
+	pfnALG_Decrypt Decrypt;
+	pfnOssl_RsaPublic_crypt RSAPublic_crypt;
+	pOssl_GetBytes Ossl_GetBytes;
+
+}S_ALG_FUNCTION_LIST, *PS_ALG_FUNCTION_LIST;
+
+typedef struct _S_DEV_HANDLE
+{
+	BYTE baCommParam[64];
+	DWORD dwDevFlags;
+	BYTE baReserver[60];
+	PS_DEV_CONFIG pDevConfig;			// 设备信息，使用OnKey_LoadConfig加载
+	PS_ALG_FUNCTION_LIST pAlgFuncList;	// 外部传入
+}S_DEV_HANDLE, *PS_DEV_HANDLE;
+
+
+
+
+
+#define BLOCK_LEN 16
+
+#define MAX_PACKAGE 1024
+#define MAX_BUF    (1024*2+128)
+#define CMD_HEAD_LEN 8
+
+typedef struct _VERSION//版本 
+{
+	BYTE major;
+	BYTE minor;
+}VERSION;
+
+typedef struct _DEVINFO//返回给PC的信息 
+{	
+	VERSION StructVersion;
+	VERSION SpecificationVersion; 
+	CHAR Manufacturer[64];
+	CHAR Issuer[64];
+	CHAR Label[32];
+	CHAR SerialNumber[32];
+	VERSION HWVersion;
+	VERSION FirmwareVersion;
+	UINT32 AlgSymCap;
+	UINT32 AlgAsymCap;
+	UINT32 AlgHashCap;
+	UINT32 DevAuthAlgId;
+	UINT32 TotalSpace;
+	UINT32 FreeSpace;
+	BYTE  Reserved[64];	
+}DEVINFO;
+// Init Device Parameter
+#define ONKEY_FLAG_INIT_NOVERIFYSOPIN		0x00010000	// 不校验管理员密码
+typedef struct _S_DEV_INITINFO
+{
+	DWORD	dwSize;
+	DWORD	dwMaxSoPinTime;
+	DWORD	dwSoPinLen;
+	LPBYTE	pbSoPin;
+	DWORD	dwMaxUserPinTime;
+	DWORD	dwUserPinLen;
+	LPBYTE	pbUserPin;
+	DWORD	dwLabelLen;
+	LPBYTE  pbLabel;
+	DWORD	dwInitFlags;
+	LPBYTE  pbInitKey; // 初始化密钥（16位），为NULL时，根据ONKEY_FLAG_INIT_NOVERIFYSOPIN来判断是否校验SOPIN
+	BYTE    baReserverBuff[4];
+}S_DEV_INITINFO, *PS_DEV_INITINFO;
+#pragma pack()
+
+
+
+
+
+/* ==============================================================
+ * Define the "extern" form of all the entry points.
+ * ==============================================================
+ */
+
+#define ONKEY_NEED_ARG_LIST  1
+//#define ONKEY_FUNCTION_INFO(name) DWORD ONKEY_FUNCTION_API name
+#define ONKEY_FUNCTION_INFO(name) DWORD name
+
+// function
+#include "OnKeyDevicef.h"
+
+#undef ONKEY_NEED_ARG_LIST
+#undef ONKEY_FUNCTION_INFO
+
+
+
+/* ==============================================================
+ * Define the typedef form of all the entry points.  That is, for
+ * each OnKey function OnKey_XXX, define a type fnOnKwy_XXX which is
+ * a pointer to that kind of function.
+ * ==============================================================
+ */
+
+#define ONKEY_NEED_ARG_LIST  1
+#define ONKEY_FUNCTION_INFO(name) typedef DWORD (* fn##name)
+
+// function
+#include "OnKeyDevicef.h"
+
+#undef ONKEY_NEED_ARG_LIST
+#undef ONKEY_FUNCTION_INFO
+
+
+
+/* ==============================================================
+ * Define structed vector of entry points.  A ONKEY_FUNCTION_LIST
+ * contains a DWORD indicating a library's OnKeyDevice version
+ * and then a whole slew of function pointers to the routines in
+ * the library.  This type was declared, but not defined.
+ * ==============================================================
+ */
+
+#define ONKEY_FUNCTION_INFO(name) fn##name name;
+  
+struct ONKEY_FUNCTION_LIST
+{
+	DWORD    version;
+
+// function
+#include "OnKeyDevicef.h"
+};
+typedef ONKEY_FUNCTION_LIST *		ONKEY_FUNCTION_LIST_PTR;
+typedef ONKEY_FUNCTION_LIST_PTR *	ONKEY_FUNCTION_LIST_PTR_PTR;
+
+#undef ONKEY_FUNCTION_INFO
+
+
+
+/* ==============================================================
+ * export funciont sOnKey_GetFunctionList.
+ * ==============================================================
+ */
+DWORD ONKEY_FUNCTION_API OnKey_GetFunctionList
+(
+	ONKEY_FUNCTION_LIST_PTR_PTR ppFuncList
+);
+
+typedef DWORD (* fnOnKey_GetFunctionList)
+(
+ ONKEY_FUNCTION_LIST_PTR_PTR ppFuncList
+);
+
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif // #ifndef _ONKEY_DEVICE_H_

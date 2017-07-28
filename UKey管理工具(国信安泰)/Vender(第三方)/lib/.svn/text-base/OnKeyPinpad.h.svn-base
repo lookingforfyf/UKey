@@ -1,0 +1,567 @@
+/////////////////////////////////////////////////////////////////////////////
+#ifndef ONKEY_PINPAD_H_
+#define ONKEY_PINPAD_H_
+#include "OnKeyToken.h"
+
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
+#define ONKEY_PINPAD_SUCCESS		0
+#define ONKEY_PINPAD_FAIL			0xE011FFFF
+#define ONKEY_PINPAD_CANCEL			0xE011F001
+#define ONKEY_PINPAD_CONTINUE		0xA0112002
+#define ONKEY_PINPAD_SWERR			0xA0120000
+#define ONKEY_PINPAD_SYSTEM_ERR		0xA0120004
+#define ONKEY_PINPAD_TIMEOUT		0xE011F002
+#define ONKEY_FIALED(r)				(r & 0x80000000)
+
+
+// flags
+#define PAD_FLAG_INPUTKEY			0x00000001
+#define PAD_FLAG_INPUTALL			0x00000002
+#define PAD_FLAG_INPUTMASK			0x000000FF
+
+//#define PAD_FLAG_CTRL_VOICEMODE		0x00000100	// 修改语音播放模式和音量
+#define PAD_FLAG_CTRL_MINIUI		0x00000200	// 无格式语音模式及警告提示
+//#define PAD_FLAG_CTRL_ENTERCODE		0x00000400	// 使用验证码确认
+
+#define PAD_FLAG_ELLIPTICRGN		0x00010000	// 单格按钮圆圈形状
+
+
+// type
+#define PAD_TYPE_SMALL				1
+#define PAD_TYPE_BIG				2
+#define PAD_TYPE_ENTER				3
+
+#define PAD_TYPE_HIP_PIN_6_2		4
+
+#define PAD_TYPE_BIG_NUM_CHAR		5
+#define PAD_TYPE_VOICEPLAY			101
+#define PAD_TYPE_VOICEPLAY_MINI		102
+//#define PAD_TYPE_VOICEPLAY_AM		104
+//#define PAD_TYPE_VOICEPLAY_ACC		105
+
+#define PAD_TYPE_DISPLAY			201
+#define PAD_TYPE_DISPLAY_MINI		202
+//#define PAD_TYPE_DISPLAY_TDR		203
+#define PAD_TYPE_DISPLAY_CONFIRM		204	// 显示确认
+
+#define PAD_TYPE_FUNCTION			999 // 功能类
+
+
+#define PAD_USE_TYPE_CHECKPIN		0x100001 // 校验密码
+#define PAD_USE_TYPE_CHANGEPIN		0x100002 // 修改密码
+#define PAD_USE_TYPE_INITDEV		0x100004 // 初始化设备
+#define PAD_USE_TYPE_SIGN_VERIFYPIN	0x100008 // 签名的验证密码 -  建行签名验证密码，需要传递数据给Pinpad显示
+#define PAD_USE_TYPE_SETPIN         0x100010
+
+#define PAD_USE_TYPE_PIN_LOGIN_HIP		0x100010 // 校验密码 HIP
+#define PAD_USE_TYPE_CHANGEPIN_HIP_1		0x100020 // 修改密码
+#define PAD_USE_TYPE_CHANGEPIN_HIP_2		0x100040 // 修改密码
+#define PAD_USE_TYPE_INITPIN_HIP			0x100080 // 初始化密码
+
+#define PAD_USE_TYPE_INVALID_PIN	0x010000 // 非法密码标志 - 校验密码时，或者修改密码时，修改UseType，以提供调用接口判断是否进行密码修改
+
+
+#define MAX_BTN_KEY_COUNT_H			60
+#define IDC_BTN_KEY_BEGIN_H			4000
+#define IDC_BTN_KEY_END_H			(IDC_BTN_KEY_BEGIN_H + MAX_BTN_KEY_COUNT_H)
+
+// function
+#define PAD_FUNC_SIGN				1
+//#define PAD_FUNC_IMPORT				2
+//#define PAD_FUNC_SIGN_LOGIN			11
+//#define PAD_FUNC_SIGN_TRANS			12
+#define PAD_FUNC_SIGN_DOWNCERT		13
+#define PAD_FUNC_IMPORT_CERT		201
+#define PAD_FUNC_MASK				0x0000FFFF
+
+//mode
+#define PAD_MODE_QUERY				1	// 查询
+#define PAD_MODE_MOVE				2	// 移动扫描
+#define PAD_MODE_INPUT				3	// 输入按键
+//#define PAD_MODE_VOICEMODE			4	// 语音播报模式切换
+//#define PAD_MODE_VOLUME				5	// 音量调节
+//#define PAD_MODE_VOICEPLAY			6	// 语音播报控制
+
+#define PAD_MODE_EXTCREATE			0x81	// key=0窗口Caption, key=1创建滑标
+
+#define PAD_DISPLAY_LIGHT			7
+#define PAD_DISPLAY_MODE			8
+
+
+#define PAD_BUTTON_VISIBLE_SINGLE_DISPLAY		0xa0000000  //193D_XXXX系列设备 单行
+#define PAD_BUTTON_VISIBLE_FINGER_DISPLAY		0x04000000  
+
+
+// 按键风格
+#define PAD_KEY_STYLE_CAPS			0x80
+#define PAD_KEY_STYLE_CAPTION		0x10
+#define PAD_KEY_STYLE_UNVISIBLE		0x20
+#define PAD_KEY_STYPE_UNICODE		0x01
+
+// 功能键
+// VK_CAPS = 0x14
+#define PAD_KEY_CAPS				0x0A
+#define PAD_KEY_ENTER				0xF0
+#define PAD_KEY_CANCEL				0xF1
+#define PAD_KEY_BACK				0xF2
+#define PAD_KEY_CLEAR				0xF3
+#define PAD_KEY_NONE				0xF4	//空白键
+#define PAD_KEY_SPACE				0x20	//空格键
+#define PAD_KEY_ENTERCODE			0x0D
+
+#define PAD_KEY_CAPTION_AUTOLOAD			(LPBYTE)1
+#define PAD_KEY_CAPTION_AUTOLOAD_VOICE		(LPBYTE)2
+#define PAD_KEY_CAPTION_AUTOLOAD_DISPLAY	(LPBYTE)3
+#define PAD_KEY_CAPTION_PLSPRESS			(LPBYTE)101
+#define PAD_KEY_CAPTION_READY				(LPBYTE)102
+
+#define PAD_KEY_CAPTION_FINGER			(LPBYTE)201
+
+#define PAD_KEY_CAPTION_ANTORUN			(LPBYTE)301
+
+
+#define PAD_KEY_CAPTION_VOICE_CAPTION		1
+#define PAD_KEY_CAPTION_VOICE_PLAYING		2
+#define PAD_KEY_CAPTION_VOICE_PLAYEND		3
+#define PAD_KEY_CAPTION_DISPLAY_CAPTION		1
+
+#define PAD_RES_OFFSET_CAPTION				4
+
+#define  PAD_KEY_END_X_FLAG			(BYTE)(0xFF)
+#define  PAD_KEY_END_Y_FLAG			(BYTE)(0xFF)
+
+#define  PAD_KEY_INIT_X_FLAG		(BYTE)(0xFE)
+#define  PAD_KEY_INIT_Y_FLAG		(BYTE)(0xFE)
+
+#define ONKEY_193D_MODE_LEFT					0x01
+#define ONKEY_193D_MODE_RIGHT					0x02
+
+//建行登录(oldpin)，修改密码，输入账号，签名确认 字符串flag 工行删除cos密钥对
+enum {
+	PAD_TRANS_SIGN = 1,
+	PAD_DOWNCERT_SIGN,
+	PAD_BATCH_SIGN,
+
+	PAD_D4T_LOGIN,
+	PAD_D4T_CHANGE_OLD,
+	PAD_D4T_CHANGE_1,
+	PAD_D4T_CHANGE_2,
+	PAD_D4T_INPUT_ACCOUNTID,
+	PAD_D4T_UPDATE_ACCOUNTID,
+	PAD_D4T_DEL_COS_PRIKEY,
+	PAD_D4T_FORMAT_DEV,
+};
+
+
+#pragma pack(push,PADKEYINFO, 1)
+
+enum {
+	NOT_RANDOM = 0,
+	NUM_RANDOM,
+	CHAR_RANDOM
+};
+
+typedef struct tagPADKEYINFO
+{
+	BYTE x, y;			// PAD_KEY_END_X_FLAG, PAD_KEY_END_Y_FLAG 结束
+	BYTE chKey;			// 键码
+	BYTE btShape;		// 按钮形状 Height << 4 + Width
+	BYTE btStyle;		// 按键风格，大写字符
+	BYTE btFontHeight;	// 高度
+	BYTE btRandom;		// 随机标示，0x01-数字随机集合, 0x02-字符随机集合
+	LPBYTE pbDispBuff;	// "A"-"Z"
+}PADKEYINFO;
+typedef PADKEYINFO CPADKEYINFO;
+typedef PADKEYINFO* PCPADKEYINFO;
+#pragma pack()
+
+
+//获取设备个数
+typedef DWORD(*pOnKeyT_GetTokenList)(BOOL bPresent, ULONG *pdwSlotList, ULONG *pwdCount);
+//获取设备信息，包括SN
+typedef DWORD(*pOnKeyT_GetTokenInfo)(ULONG slotID, ULONG dwFlags, PS_DEV_CONFIG pInfo);
+//校验PIN码
+typedef DWORD (*pOnKeyT_VerifyPin)(DWORD dwSlotID, DWORD dwPinType, LPBYTE pbPIN, DWORD dwPINLen);
+//修改PIN码
+typedef DWORD(*pOnKeyT_ChangePin)(ULONG slotID, ULONG dwType, LPBYTE pbOldPin, ULONG dwOldPinLen, LPBYTE pbNewPin, ULONG dwNewPinLen);
+//初始化设备
+typedef DWORD(*pOnKeyT_InitToken)(ULONG slotID, PS_DEV_INITINFO pInit);
+//获取token参数
+typedef DWORD(*pOnKeyT_ManTokenParam)(DWORD slotID, DWORD dwParam, LPVOID pData);
+
+#pragma pack(1)
+typedef struct tagPADPARAM
+{
+public:
+	DWORD dwSize;
+	DWORD dwWindowLeft, dwWindowTop;
+	BYTE btCellWidth, btCellHeight;//对于建行显示key，HIP，btCellWidth = 列数，btCellHeight = 行数
+	BYTE btVoiceMode, btVolume; // 语音模式, 音量
+
+	DWORD dwFlags, dwScanTime, dwUseType;
+
+	DWORD dwPinType; //密码类型
+	DWORD dwSlotID;
+	BYTE  btMinPinLen, btMaxPinLen, btOriginalPinLen, btNewPinLen;
+	BYTE  baOriginalPin[0x40], baNewPin[0x40];
+	BYTE  btIsDefaultPin; //返回密码输入状态，0-不是默认密码，1-是默认密码
+
+	BOOL bIsDefaultPin; //输入的密码是否是默认密码，TokenInfo决定
+
+	BYTE baPinLeftTime; //pin码剩余尝试次数
+
+	DWORD dwTransDataLen;   // 交易长度
+	LPBYTE pbTransDataInfo; // 交易数据
+	DWORD dwModifyPinType;  // 修改密码框分默认和正常2种类型， 1 -- 表示设置密码(用默认密码修改密码)，0 -- 表示修改密码
+	DWORD dwShowDataLen;
+	LPBYTE pbShowData;
+    //HWND   hParentWnd;	
+tagPADPARAM()
+{
+	pbTransDataInfo = NULL;
+	dwModifyPinType = 0;
+	bIsDefaultPin = FALSE;
+};
+}PADPARAM, *PPADPARAM;
+#pragma pack()
+// 输入输出格式： mode + x + y + keyvalue
+typedef DWORD ( *pScanCoordinate)(HANDLE hHandle, LPBYTE pInOutBuff, DWORD dwMaxLen);
+typedef DWORD ( *pPinpad_Indicator_HIP)(HANDLE hHandle, LPVOID fnCallback, PCPADKEYINFO pKeyInfo, PPADPARAM pParam, DWORD dwPadType);
+typedef DWORD ( *pPinpad_Indicator)(HANDLE hHandle, LPVOID fnCallback, PCPADKEYINFO pKeyInfo, PPADPARAM pParam);
+typedef DWORD ( *pPinpad_CreateKey)(HANDLE hHandle, pScanCoordinate fnScan, PCPADKEYINFO pKeyInfo, PPADPARAM pParam);
+typedef DWORD ( *pPinpad_CreateKeyEx)(HANDLE hHandle, pScanCoordinate fnScan, PCPADKEYINFO pKeyInfo, PPADPARAM pParam, DWORD dwPadType);
+typedef PCPADKEYINFO ( *pPinpad_GetKeyInfo)(DWORD dwPadType); 
+typedef DWORD ( *pPinpad_ShowDialog)(DWORD dwDlgType, LPVOID pParam);
+//typedef DWORD ( *pPinpad_MLChangeDlgRes)(LPCTSTR pszApp, HWND hDlg);
+typedef DWORD ( *pPinpad_MLGetText)(LPCTSTR pszApp, LPCTSTR pszKey, LPTSTR pszValue, int nValSize);
+typedef void ( *pPinpad_Param)(LPVOID pData, DWORD dwType);
+typedef DWORD ( *pPinpad_VerifyData)(DWORD dwEncoding, LPBYTE pbWholeData, DWORD dwWholeDataLen);
+
+//
+DWORD  Pinpad_Indicator(HANDLE hHandle, LPVOID fnCallback, PCPADKEYINFO pKeyInfo, PPADPARAM pParam);
+DWORD  Pinpad_CreateKey(HANDLE hHandle, pScanCoordinate fnScan, PCPADKEYINFO pKeyInfo, PPADPARAM pParam);
+DWORD  Pinpad_CreateKeyEx(HANDLE hHandle, pScanCoordinate fnScan, PCPADKEYINFO pKeyInfo, PPADPARAM pParam, DWORD dwPadType);
+PCPADKEYINFO  Pinpad_GetKeyInfo(DWORD dwPadType); 
+void  Pinpad_Param(LPVOID pData, DWORD dwType);
+
+DWORD  Pinpad_ShowDialog(DWORD dwDlgType, LPVOID pParam);
+//DWORD  Pinpad_MLChangeDlgRes(LPCTSTR pszApp, HWND hDlg);
+DWORD  Pinpad_MLGetText(LPCTSTR pszApp, LPCTSTR pszKey, LPTSTR pszValue, int nValSize);
+
+enum
+{
+	ENCODE_GBK = 0,	//GBK编码
+	ENCODE_UTF,		//UTF-8编码
+	ENCODE_UNI,		 //UNI-16 Big Endian
+	ENCODE_MAX
+};
+
+
+typedef struct _S_ICBC_PINPADDATA{
+	DWORD dwTimeout;
+	DWORD dwLangID;
+	DWORD dwEncType;
+	LPCTSTR pszNotice;
+	DWORD dwCSPLen;
+	LPBYTE pbCSP;
+	DWORD dwT22DataLen;
+	LPBYTE pbT22Data;
+}S_ICBC_PINPADDATA, *PS_ICBC_PINPADDATA;
+
+
+enum{
+	ICBC_LANG_ID_CSP = 0,
+	ICBC_LANG_ID_TOOL
+};
+
+// 
+class COnKeyPinpad
+{
+public :
+	COnKeyPinpad(LPCTSTR pszDllName)
+	{
+		void *pTemp=NULL;
+		m_hMod = dlopen(pszDllName,1);
+		pTemp = dlsym(m_hMod,"Pinpad_Indicator");
+		memcpy(&fnIndicator,&pTemp,sizeof(void *));
+		pTemp = dlsym(m_hMod,"Pinpad_CreateKeyEx");
+		memcpy(&fnCreateKeyEx,&pTemp,sizeof(void *));
+		pTemp = dlsym(m_hMod,"Pinpad_Param");
+		memcpy(&fnSetParam,&pTemp,sizeof(void *));
+
+		memset(&m_padParam, 0, sizeof(PADPARAM));
+		m_padParam.dwSize = sizeof(PADPARAM);
+		//m_padParam.dwFlags = PAD_FLAG_CTRL_VOICEMODE;
+		m_padParam.dwScanTime = 500;
+		m_padParam.btVoiceMode = 1;
+		m_padParam.btVolume = 7;
+	}
+	~COnKeyPinpad()
+	{
+		dlclose(m_hMod);
+	}
+
+	PPADPARAM GetPadParam()
+	{
+		return &m_padParam;
+	}
+
+	//hyf
+	void SetParam(PADPARAM param)
+	{
+		m_padParam = param;
+	}
+	void SetLangID(DWORD dwLangID, DWORD dwType = ICBC_LANG_ID_CSP)
+	{
+		if(NULL != fnSetParam)  fnSetParam(&dwLangID, dwType);
+	}
+
+	DWORD Indicator(HANDLE hHandle, LPVOID fnScan, DWORD dwPadType, PCPADKEYINFO pKeyInfo = NULL)
+	{
+		if (fnIndicator == NULL)
+			return ONKEY_PINPAD_FAIL;
+		if (m_padParam.btCellWidth == 0)
+		{
+			m_padParam.btCellWidth = (dwPadType==PAD_TYPE_SMALL)? 64 : 32;
+		}
+		if (m_padParam.btCellHeight == 0)
+		{
+			m_padParam.btCellHeight = (dwPadType==PAD_TYPE_SMALL)? 64 : 28;
+		}
+		if (pKeyInfo == NULL)
+		{
+			pKeyInfo = fnGetKeyInfo(dwPadType);
+		}
+		if(dwPadType == PAD_TYPE_HIP_PIN_6_2)
+			return fnIndicator_HIP(hHandle, fnScan, pKeyInfo, &m_padParam, dwPadType);
+		else
+		return fnIndicator(hHandle, fnScan, pKeyInfo, &m_padParam);
+	}
+
+	DWORD CreateKey(HANDLE hHandle, pScanCoordinate fnScan, DWORD dwPadType, PCPADKEYINFO pKeyInfo = NULL)
+	{
+		if (fnCreateKeyEx == NULL)
+			return ONKEY_PINPAD_FAIL;
+
+		//if (dwPadType == PAD_TYPE_VOICEPLAY_MINI || dwPadType == PAD_TYPE_DISPLAY_MINI)
+		//{
+		//	m_padParam.dwFlags &= (~PAD_FLAG_CTRL_VOICEMODE);
+		//	m_padParam.dwFlags |= PAD_FLAG_CTRL_MINIUI;
+		//}
+
+		if (m_padParam.btCellWidth == 0)
+		{
+			m_padParam.btCellWidth = 108; //136;
+		}
+		if (m_padParam.btCellHeight == 0)
+		{
+			m_padParam.btCellHeight = 32;
+		}
+		//if (pKeyInfo == NULL)
+		//{
+		//	pKeyInfo = fnGetKeyInfo(dwPadType);
+		//}
+		return fnCreateKeyEx(hHandle, fnScan, pKeyInfo, &m_padParam, dwPadType);
+	}
+
+	pPinpad_Indicator fnIndicator; 
+	pPinpad_CreateKey fnCreateKey;
+	pPinpad_CreateKeyEx fnCreateKeyEx;
+	pPinpad_GetKeyInfo fnGetKeyInfo;
+	pPinpad_Param fnSetParam;
+	PADPARAM m_padParam;
+	pPinpad_Indicator_HIP fnIndicator_HIP;
+protected:
+	
+	HANDLE m_hMod;
+	LGN::CLoadModule m_loadModule; 
+};
+
+
+
+///////////////////////////////////////////////////////////////////////////
+// class COnKeyPinpad
+
+typedef struct _ST_SELECTDEVICE
+{
+	struct _ST_ITEM
+	{
+		LPCTSTR pszLabel;
+		LPCTSTR pszShellSN;
+	};
+	DWORD dwSelectResult; // out
+	DWORD dwItemCount;
+	_ST_ITEM * pItemList;
+}ST_SELECTDEVICE, * PST_SELECTDEVICE;
+
+typedef struct _ST_SELECTCERT
+{
+public:
+	DWORD dwSelectResult; // 返回选中的选项的序号
+	DWORD dwItemCount;    // 选项个数
+	LPWSTR *ppCertNames; // 证书CN(如果没有证书，则使用容器名称)
+	DWORD  dwSelectType;  // 0-选择证书进行覆盖, 1-选择证书
+
+	_ST_SELECTCERT()
+	{
+		dwSelectType = 0;
+	}
+}ST_SELECTCERT, * PST_SELECTCERT;
+
+typedef struct _ST_INPUTPASSWD
+{
+	DWORD dwPasswdType;
+	DWORD dwPasswdMinLen;
+	DWORD dwPasswdMaxLen;
+	LPCTSTR pszTitle;
+	DWORD dwPasswdLen; // out
+	BYTE baPasswdBuff[64]; // out
+}ST_INPUTPASSWD, * PST_INPUTPASSWD;
+
+typedef struct _ST_DISPLAYINFO
+{
+	DWORD dwPasswdTimes;
+	LPCTSTR pszTitle;
+	LPCTSTR pszMessage;
+}ST_DISPLAYINFO, * PST_DISPLAYINFO;
+
+typedef struct _ST_VIEWUINFO
+{
+	LPCTSTR pszLabel;
+	LPCTSTR pszSN;
+	LPCTSTR pszCap;
+	LPCTSTR pszPinTimes;
+}ST_VIEWUINFO, *PST_VIEWUINFO;
+
+typedef struct _ST_MSGBOX
+{
+	unsigned char * pszTitle;
+	unsigned char * pszMsg;
+	BOOL bShowCancel;//0不显示cancel按钮，1显示cancel按钮
+}ST_MSGBOX, *PST_MSGBOX;
+
+typedef struct _ST_BOT_HID
+{
+	DWORD dwSlotID;
+	LPVOID fnCallBack;
+}ST_BOT_HID, *PST_BOT_HID;
+
+class COnKeyDialog
+{
+public:
+	enum Type{
+		typeSelectDevice = 1,
+		typeSelectCert,
+		typeInputPasswd,
+		typeDisplayInfo,	// PinTime
+		typeDisplayProc,	// GenKey
+		typeChangeLabel,
+		typeViewUInfo,
+		typeMsgBox,
+		typeBOTHID,
+		typeFastSetting,
+		typeSafeUseTips, 
+		typeShowError, // 显示错误
+		typeShowTimeOut, // 显示错误
+	};
+public :
+	COnKeyDialog(LPCTSTR pszDllName)
+	{
+		void *pTemp=NULL;
+		m_hMod = dlopen(pszDllName,1);
+		pTemp = dlsym(m_hMod,"Pinpad_ShowDialog");LGN::API::memcpy(&fnShowDialog,&pTemp,sizeof(void *));
+	}
+	~COnKeyDialog()
+	{
+		dlclose(m_hMod);
+	}
+
+	DWORD ShowDialog(DWORD dwDlgType, LPVOID pParam)
+	{
+		if (fnShowDialog == NULL)  
+			return ONKEY_PINPAD_FAIL;
+
+		return fnShowDialog(dwDlgType, pParam);
+	}
+
+	pPinpad_ShowDialog fnShowDialog;
+protected:
+	HANDLE m_hMod;
+};
+
+typedef struct vdInputPinArg
+{
+
+public:
+	//PinPad Param
+	//HWND		hParentWnd;		//
+	LPCTSTR		pszPadDLLName;	//
+	HANDLE		hInstanceHandle;//
+	LPVOID		pfnCallBackFunc;//
+	BYTE		btMaxPinLen;	//
+	BYTE		btMinPinLen;	//
+	DWORD		dwPadType;		//
+	DWORD		dwPadFlag;		//
+	DWORD		dwUseType;		//  用作校验密码,输入密码
+	DWORD		dwWinLeft;		//  对话框坐标X
+	DWORD		dwWinTop;		//  对话框坐标Y
+	DWORD		dwPinType;		// 
+	DWORD		dwSlotID;
+	LPBYTE		pszRetPinData;
+	UINT *		pudRetPinLen;
+	BOOL		bIsNeedSwitchDesk;
+
+	DWORD		dwTransDataLen;   // 交易长度
+	LPBYTE		pbTransDataInfo; // 交易数据
+
+	BOOL		bIsDefaultPin;	//是否是默认密码
+
+	DWORD		dwModifyPinType;  // 修改密码框分默认和正常2种类型， 1 -- 表示设置密码(用默认密码修改密码)，0 -- 表示修改密码
+
+public:
+	vdInputPinArg()
+	{
+		pszPadDLLName = NULL;
+		btMaxPinLen = 6;
+		hInstanceHandle = NULL;
+		pfnCallBackFunc = NULL;
+		dwPadType = PAD_TYPE_SMALL;
+		dwPadFlag = PAD_FLAG_INPUTALL;
+		pszRetPinData = NULL;
+		pudRetPinLen = NULL;
+		dwUseType = PAD_USE_TYPE_CHECKPIN;
+		dwPinType = 0;
+		dwSlotID = 0;
+		bIsNeedSwitchDesk = TRUE;
+		dwWinLeft = 0;
+		dwWinTop = 0;
+
+		bIsDefaultPin = FALSE;
+		dwModifyPinType = 0;
+		dwTransDataLen = 0;
+		pbTransDataInfo = NULL;
+	}
+}vdINPUTPINARG, *vdLPINPUTPINARG;
+
+
+#define  WM_PAD_KEY_VALUE			(WM_USER+2000)		//PAD输入密码消息
+#define  WM_PAD_ENTER_OR_CANCEL		(WM_USER+2001)		
+#define  WM_PAD_EDIT_SETFOCUS		(WM_USER+2002)
+
+#define  WM_INPUT_PIN_CREATE	WM_USER+1000
+#define  WM_INPUT_PIN_EXIT		WM_USER+1001
+#define  WM_INPUT_PIN_HIDE		WM_USER+1002
+
+#define  WM_TO_PAD_CLOSE		WM_USER+1010
+#define  WM_TO_THR_PAD_CREATE	WM_USER+1011
+#define  WM_TO_THR_PAD_CLOSE	WM_USER+1012
+
+#ifdef  __cplusplus
+}
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif // #ifdef ONKEY_PINPAD_H_

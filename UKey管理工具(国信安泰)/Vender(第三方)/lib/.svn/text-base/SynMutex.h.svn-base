@@ -1,0 +1,59 @@
+#ifndef SYN_MUTEX_H
+#define SYN_MUTEX_H
+
+#ifndef _WINDOWS_
+ 	#error Include 'Windows.h' before including this file
+#endif
+
+#include <WtsApi32.h>
+#pragma comment(lib, "WtsApi32.lib")
+#pragma message("Automatically linking with WtsApi32.dll")
+
+namespace SYN
+{
+	inline void GetDefaultMutexName(TCHAR * psOEMID, TCHAR * psAppName, TCHAR *psName)
+	{
+		TCHAR *pcsGuid = TEXT("299E7DB91AF94376AAB054268F95BF29");
+
+		DWORD dwSessionID = 0;
+		ProcessIdToSessionId(GetCurrentProcessId(), &dwSessionID);
+
+		wsprintf(psName, TEXT("MutexNameGUID%sOEMID%sSESSIONID%dAPP%s"), pcsGuid, psOEMID, dwSessionID, psAppName);
+	}
+
+	class CSynMutex
+	{
+	public:
+		CSynMutex(TCHAR * lpName)
+		{
+			m_hMutex = CreateMutex(NULL, FALSE, lpName);
+		}
+		~CSynMutex()
+		{
+			if(NULL != m_hMutex)
+				::CloseHandle(m_hMutex);
+
+			m_hMutex = NULL;
+		}
+		BOOL Lock(DWORD dwMilliseconds)
+		{
+			if(NULL == m_hMutex)
+				return FALSE;
+			return (WAIT_OBJECT_0 == WaitForSingleObject(m_hMutex, dwMilliseconds) );
+		}
+		BOOL Unlock()
+		{
+			if(NULL == m_hMutex)
+				return FALSE;
+			return ReleaseMutex(m_hMutex);
+		}
+	private:
+		CSynMutex(const CSynMutex &other);
+		CSynMutex operator=(const CSynMutex &other);
+	protected:
+		HANDLE m_hMutex ;
+	};
+};
+
+#endif
+

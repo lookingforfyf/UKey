@@ -1,0 +1,57 @@
+#ifndef _ONKEY_RSADEF_H_
+#define _ONKEY_RSADEF_H_
+
+#define ALG_MD5_HASH			0x00000001
+#define ALG_SHA1_HASH			0x00000002
+#define ALG_SHA256_HASH			0x00000004
+#define ALG_SHA384_HASH			0x00000008
+#define ALG_SHA512_HASH			0x00000010
+
+#define ALG_GETDATA_UPDATE		0x00010000		//获取hash中间结果
+
+// OnKey接口使用的RSA密钥存储格式
+#define ME_PUBLICKEY_MARK			0x3320454D	// ME 3
+#define ME_PRIVATEKEY_MARK			0x3920454D	// ME 9
+#define ME_PUBLICKEY_CIPHER_MARK	0x332A454D	// ME*3
+#define ME_PRIVATEKEY_CIPHER_MARK	0x392A454D	// ME*9
+#define ME_PRIVATEKEY_NED_MARK		0x3420454D	// ME 4
+
+#define ME_PUBLICKEY_KEYLEN(blocklen) ((blocklen) * 3)
+#define ME_PRIVATEKEY_KEYLEN(blocklen) ((blocklen) * 9)
+
+#define ME_PUBLICKEY_BLOCKLEN(len) ((len) / 3)
+#define ME_PRIVATEKEY_BLOCKLEN(len) ((len) / 9)
+
+#define ME_RSAKEY_PTR(id, key, blocklen) ((key) + (blocklen) * id)
+#define ME_RSAKEY_LEN(id, key) (((LPDWORD)key)[id])
+
+#define ME_RSAKEY_MARK(key) ME_RSAKEY_LEN(0, key)
+
+#define ME_RSAKEY_N_PTR(key, blocklen) ME_RSAKEY_PTR(1, key, blocklen)
+#define ME_RSAKEY_E_PTR(key, blocklen) ME_RSAKEY_PTR(2, key, blocklen)
+#define ME_RSAKEY_D_PTR(key, blocklen) ME_RSAKEY_PTR(3, key, blocklen)
+#define ME_RSAKEY_P_PTR(key, blocklen) ME_RSAKEY_PTR(4, key, blocklen)
+#define ME_RSAKEY_Q_PTR(key, blocklen) ME_RSAKEY_PTR(5, key, blocklen)
+#define ME_RSAKEY_DMP1_PTR(key, blocklen) ME_RSAKEY_PTR(6, key, blocklen)
+#define ME_RSAKEY_DMQ1_PTR(key, blocklen) ME_RSAKEY_PTR(7, key, blocklen)
+#define ME_RSAKEY_IQMP_PTR(key, blocklen) ME_RSAKEY_PTR(8, key, blocklen)
+
+#define ME_RSAKEY_N_LEN(key) ME_RSAKEY_LEN(1, key)
+#define ME_RSAKEY_E_LEN(key) ME_RSAKEY_LEN(2, key)
+#define ME_RSAKEY_D_LEN(key) ME_RSAKEY_LEN(3, key)
+#define ME_RSAKEY_P_LEN(key) ME_RSAKEY_LEN(4, key)
+#define ME_RSAKEY_Q_LEN(key) ME_RSAKEY_LEN(5, key)
+#define ME_RSAKEY_DMP1_LEN(key) ME_RSAKEY_LEN(6, key)
+#define ME_RSAKEY_DMQ1_LEN(key) ME_RSAKEY_LEN(7, key)
+#define ME_RSAKEY_IQMP_LEN(key) ME_RSAKEY_LEN(8, key)
+
+// 加密公钥
+typedef struct _S_RASKEY_CIPHER
+{
+	DWORD dwMark;
+	DWORD dwProKeyID;
+	DWORD dwLength;
+	BYTE  pbData[4]; // more data
+}S_RASKEY_CIPHER, *PS_RASKEY_CIPHER;
+
+#endif // _ONKEY_RSADEF_H_

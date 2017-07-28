@@ -1,0 +1,109 @@
+#ifndef _WIN_VERSION_H__
+#define _WIN_VERSION_H__
+
+namespace OS
+{
+	struct CWinVersion : OSVERSIONINFOEX
+	{
+		CWinVersion()
+		{
+			dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+			wServicePackMajor = 0; // 补丁号
+			::GetVersionEx((OSVERSIONINFO*)this);
+		}
+
+		bool IsVistaLater()
+		{
+			return (dwPlatformId == VER_PLATFORM_WIN32_NT) && (dwMajorVersion >= 6);
+		}
+
+		bool IsWinXPLater()
+		{
+			return IsVistaLater() || ((dwPlatformId == VER_PLATFORM_WIN32_NT) && (dwMajorVersion == 5 && dwMinorVersion >= 1));
+		}
+
+		bool IsWin2K()
+		{
+			return (dwPlatformId == VER_PLATFORM_WIN32_NT) && (dwMajorVersion == 5 && dwMinorVersion == 0);
+		}
+		bool IsWinXP()
+		{
+			return	(dwPlatformId == VER_PLATFORM_WIN32_NT) && (dwMajorVersion == 5 && dwMinorVersion == 1);
+		}
+		bool IsWin2003()
+		{
+			return (dwPlatformId == VER_PLATFORM_WIN32_NT) && (dwMajorVersion == 5 && dwMinorVersion == 2) && (wProductType == VER_NT_SERVER);
+		}
+		static bool Is64()
+		{
+#if defined(_WIN64)
+			return true;  // 64-bit programs run only on Win64
+#else
+			typedef BOOL (WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
+			LPFN_ISWOW64PROCESS  fnIsWow64Process = (LPFN_ISWOW64PROCESS) GetProcAddress(GetModuleHandle(TEXT("kernel32")),"IsWow64Process");
+			BOOL bIsWow64 = FALSE;
+			if (fnIsWow64Process != NULL)
+			{
+				fnIsWow64Process(::GetCurrentProcess(), &bIsWow64);
+			}
+			return (bIsWow64 != FALSE);
+#endif
+		};
+		
+		void DisableWow64Redirection()
+		{
+			m_lVoid = NULL;
+			typedef BOOL (WINAPI *LPFN_DisableWow64Red) (PVOID *OldValue);
+			LPFN_DisableWow64Red fnDisableWow64Red = 
+				(LPFN_DisableWow64Red)GetProcAddress(GetModuleHandle(TEXT("kernel32")),"Wow64DisableWow64FsRedirection");
+			if(NULL != fnDisableWow64Red)
+			{
+				m_dwType = 1;
+				fnDisableWow64Red(&m_lVoid);
+				return;
+			}
+
+			//不存在的该函数情况
+			typedef BOOL (WINAPI *LPFN_EnableWow64Red) (BOOL bTrue);
+			LPFN_EnableWow64Red fnEnableWow64Red = 
+				(LPFN_EnableWow64Red)GetProcAddress(GetModuleHandle(TEXT("kernel32")),"Wow64EnableWow64FsRedirection");
+			if(NULL != fnEnableWow64Red && m_dwType == 2)
+			{
+				fnEnableWow64Red(FALSE);
+				m_dwType = 2;
+				return;
+			}
+		}
+
+		void EnableWow64Redirection()
+		{
+			typedef BOOL (WINAPI *LPFN_ReverteWow64Red) (PVOID OldValue);
+			LPFN_ReverteWow64Red fnReverteWow64Red = 
+				(LPFN_ReverteWow64Red)GetProcAddress(GetModuleHandle(TEXT("kernel32")),"Wow64RevertWow64FsRedirection");
+			if(NULL != fnReverteWow64Red)
+			{
+				fnReverteWow64Red(m_lVoid);
+				m_dwType = 0;
+				return;
+			}
+			//不存在的该函数情况
+			typedef BOOL (WINAPI *LPFN_EnableWow64Red) (BOOL bTrue);
+			LPFN_EnableWow64Red fnEnableWow64Red = 
+				(LPFN_EnableWow64Red)GetProcAddress(GetModuleHandle(TEXT("kernel32")),"Wow64EnableWow64FsRedirection");
+			if(NULL != fnEnableWow64Red && m_dwType == 2)
+			{
+				fnEnableWow64Red(TRUE);
+				m_dwType = 0;
+				return;
+			}
+		}
+
+	public:
+		PVOID m_lVoid;//for 64 redirection
+		DWORD m_dwType;//1 is DisableWow64Redirection 存在; 2 is Wow64EnableWow64FsRedirection 存在
+	};
+
+	__declspec(selectany) CWinVersion g_WinVersion;
+};
+
+#endif

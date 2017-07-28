@@ -1,0 +1,137 @@
+#pragma once
+
+#include "CCBError.h"
+
+#define ONKEY_CRYPT_USE_EXT_TOOL
+#include "OnKeyCrypt.h"
+
+#include "OnKeyReg.h"
+#include "OnKeyRes.h"
+#include "CCBDetect.h"
+
+#include <wincrypt.h>
+
+typedef DWORD (*lpfnvdInputPin)(vdInputPinArg sPadArg);
+
+#define MAX_DATA_LEN		1024*20
+
+struct stCertProperty
+{
+public:
+	CStringA		strOwner;	// Owner(证书持有者)
+	CStringA		strIssuer;	// Issuer(颁发者)
+	CStringA		strSubject;	// Subject(主题)
+	
+	CStringA		strX500Str;	// 建行要求解析OID
+	CStringA		strCert_C;	// Cert-C值
+	CStringA		strCert_S;	// Cert-S值
+	CStringA		strCert_O;	// Cert-O值
+	CStringA		strCert_OU;	// Cert-OU值
+	CStringA		strCert_CN;	// Cert-OU值
+	CStringA		strCert_E;	// Cert-E值
+
+	DWORD		dwCertSN;		// SN
+	SYSTEMTIME	stStartTime;// Not Before(有效起始日期)
+	SYSTEMTIME	stEndTime;	// Not After(有效终止日期)
+	CStringA		strVersion;	// Version
+	CStringA		strSignAlg;	// Signature Algorithm
+	DWORD		dwCertStatus;
+
+public:
+	stCertProperty()
+	{
+		strOwner.Empty();
+		strIssuer.Empty();
+		strSubject.Empty();
+		strX500Str.Empty();
+		strCert_C.Empty();
+		strCert_S.Empty();
+		strCert_O.Empty();
+		strCert_OU.Empty();
+		strCert_CN.Empty();
+		dwCertSN = 0;
+
+		memset(&stStartTime, 0x00, sizeof(SYSTEMTIME));
+		memset(&stEndTime, 0x00, sizeof(SYSTEMTIME));
+
+		strVersion.Empty();
+		strSignAlg.Empty();
+		dwCertStatus = 0;
+	}
+
+};
+
+class CTDRCCBFunc
+{
+public:
+	CTDRCCBFunc(void);
+	~CTDRCCBFunc(void);
+
+	static void InitTokenLib();
+	static void FinalTokenLib();
+	static int  GetDeviceSlotID(DWORD&);	// 获取SlotID
+	static bool CCBDeviceIsExist();			// Key是否插在电脑上
+	static int  CertIsAvailable();			// 个人证书是否可用
+	static bool CertIsRegistered(DWORD);	// 个人证书是否注册
+	static int  DeviceIsLocked();			// Key是否锁定
+	static int  ChangeDevicePin();			// 修改网银盾密码
+	static int  ShowPersonalCert();			// 显示个人证书
+	static int  InitDevice();				// 初始化设备
+
+#ifdef CCB_MAKE_CERT_P10
+	static int MakePKCS10(DWORD dwSlotID, char *psDevSN, char *psBase64CertRequest, int *nBase64CertRequest); // 打包PKCS10
+#endif
+
+	static int GetDeviceSN(char*,int*, DWORD dwSlotID = 0); // 获取设备序列号
+	static int GetSysCertCtnName(char *sCertCtnName, LPBYTE pbCertData, LPDWORD pdwCertDataLen); // 获取天地融CSP注册的证书容器名及证书数据
+	static int GetSysCertProperty(stCertProperty * lpstCertProp); // 获取天地融CSP注册的证书属性
+
+	static int GetSysCertInfo(char *sCertCtnName, PCCERT_CONTEXT*pCertCtn,   //该接口临时返回证书Ctn，提供封装P7使用
+		stCertProperty* lpstCertProp = NULL, LPBYTE pbCertData = NULL, LPDWORD pdwDataLen = NULL); // 获取天地融CSP注册的证书信息
+	
+	static int GetSysCertData(char *sCertCtnName, PCCERT_CONTEXT* pCertCtn);//获取证书数据
+
+	static int PriKeyCalc( char * psCtnName, IN const BYTE * pPlain,  IN DWORD dwPlainSize, OUT BYTE ** ppSignature, OUT DWORD *pdwSignatureSize ); // 裸签
+	static bool GetDeviceCertData(char* sCtnName,LPBYTE pbCertData, LPDWORD pdwCertDataLen); // 获取设备中的证书数据
+	static bool ParseCertProperty(PCCERT_CONTEXT pCertContext, stCertProperty & certProp); // 解析证书属性
+	static void ParseX500Str(stCertProperty & certProp); // 解析X500字符串
+	static int KeyFileSystemIsComplete(); // 文件结构完整性
+	static bool IsSetupCSPFile(); // CSP文件是否安装, CSP注册表找不到, Install路径目录找不到
+
+	static bool IsRegRootToFirefox(); // 根证书是否注册至Firefox浏览器并通过SSL授权验证 - 进程
+	static bool IsLoadP11ToFirefox(); // P11动态库未加载至Firefox安全设备中 - 进程
+	static bool IsRegMyCertToToFirefox(); //  个人证书未注册至Firefox浏览器中 - 进程
+
+	static bool IsRegRootToFirefox_P(); // 根证书是否注册至Firefox浏览器并通过SSL授权验证 - 进程
+	static bool IsLoadP11ToFirefox_P(); // P11动态库未加载至Firefox安全设备中 - 进程
+	static bool IsRegMyCertToToFirefox_P(); //  个人证书未注册至Firefox浏览器中 - 进程
+
+	static void CCBRegAllMyCert();
+
+	static bool RepairRegInfo(); // 修复注册表信息
+	static bool RepairIECom();   // 修复IE-COM 
+	static bool RepairMyCert();  // 修复IE个人证书
+	static bool RepairRootCert();  // 修复IE根证书
+
+	static bool RepairFirefoxPlugin();//修复Firefox插件注册信息
+	static bool UnRegistFirefoxPlugin();//清理Firefx插件信息
+	static bool RepairService(); // 修复服务进程
+
+	static bool RetsetIESecLevel(); //重置IE安全级别
+
+	static bool RepairFirefoxRootCert(); // 修复Firefox根证书
+
+	static bool RepairFirefoxRootCert_P(); // 修复Firefox根证书 - 进程
+	static bool RepairFirefoxLoadP11(); // 修复Firefox加载P11
+	static bool RepairFirefoxLoadP11_P(); // 修复Firefox加载P11 - 进程
+	static bool RepairFirefoxMyCert(); // 修复Firefox个人证书
+	static bool RepairFirefoxMyCert_P();// 修复Firefox个人证书 - 进程
+
+	static bool UninstallFirefoxP11Module(); //卸载firefox-P11模块
+	static bool UninstallFirefoxP11Module_P(); //卸载firefox-P11模块
+
+	static bool UnregMyCertFromFirefox();  // 注销firefox个人证书
+	static bool UnregMyCertFromFirefox_P(); // 注销firefox个人证书
+
+	static bool CommonProcessFirefox_P(LPTSTR psCmd); // 调用进程完成功能
+};

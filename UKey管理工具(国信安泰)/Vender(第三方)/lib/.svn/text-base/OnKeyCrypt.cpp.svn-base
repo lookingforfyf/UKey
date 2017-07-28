@@ -1,0 +1,764 @@
+#include "stdafx.h"
+#include "OnKeyCrypt.h"
+#include "pkcs11t_ext.h"
+
+#ifndef ONKEY_CRYPT_NO_USE_WINCRYPT
+#include <Wincrypt.h>
+
+#pragma comment(lib, "Crypt32.lib")
+#pragma message("Automatically linking with Crypt32.dll")
+
+#define CRYPT_INSIDE_ENCODING_TYPE_V X509_ASN_ENCODING | PKCS_7_ASN_ENCODING
+#endif
+
+#ifndef ONKEY_CRYPT_NO_USE_CSP
+
+#if !(NTDDI_VERSION < NTDDI_WINXP) // VC9
+typedef struct _VTableProvStruc {
+    DWORD   Version;
+    FARPROC FuncVerifyImage;
+    FARPROC FuncReturnhWnd;
+	DWORD   dwProvType;
+	BYTE	*pbContextInfo;
+	DWORD	cbContextInfo;
+} VTableProvStruc, *PVTableProvStruc;
+#endif
+typedef BOOL (WINAPI * pCPAcquireContext)(HCRYPTPROV *phProv, LPCSTR szContainer, DWORD dwFlags, PVTableProvStruc pVTable);
+typedef BOOL (WINAPI * pCPGetProvParam)(HCRYPTPROV hProv, DWORD dwParam, LPBYTE pbData, OUT LPDWORD pcbDataLen, DWORD dwFlags);
+typedef BOOL (WINAPI * pCPSetProvParam)(HCRYPTPROV hProv, DWORD dwParam, CONST BYTE *pbData, DWORD dwFlags);
+typedef BOOL (WINAPI * pCPReleaseContext)(HCRYPTPROV hProv, DWORD dwFlags);
+typedef BOOL (WINAPI * pCPGetUserKey)(HCRYPTPROV hProv, DWORD dwKeySpec, HCRYPTKEY *phUserKey);
+typedef BOOL (WINAPI * pCPExportKey)( HCRYPTPROV hProv, HCRYPTKEY hKey, HCRYPTKEY hPubKey, DWORD dwBlobType, DWORD dwFlags, LPBYTE pbData, LPDWORD pcbDataLen);
+typedef BOOL (WINAPI * pCPImportKey)(HCRYPTPROV hProv, CONST BYTE *pbData, DWORD cbDataLen, HCRYPTKEY hPubKey, DWORD dwFlags, HCRYPTKEY *phKey);
+typedef BOOL (WINAPI * pCPGetKeyParam)(HCRYPTPROV hProv, HCRYPTKEY hKey, DWORD dwParam, LPBYTE pbData, LPDWORD pcbDataLen, DWORD dwFlags);
+typedef BOOL (WINAPI * pCPSetKeyParam)(HCRYPTPROV hProv, HCRYPTKEY hKey, DWORD dwParam, CONST BYTE *pbData, DWORD dwFlags);
+typedef BOOL (WINAPI * pCPDestroyKey)(HCRYPTPROV hProv, HCRYPTKEY hKey);
+
+class CCspLoad
+{
+public:
+	CCspLoad()
+	{
+		m_hMod = LoadLibrary(ONKEY_CSP_PROV_DLLNAME);		
+		fnCPAcquireContext	= (pCPAcquireContext)	GetProcAddress(m_hMod, "CPAcquireContext");
+		fnCPGetProvParam	= (pCPGetProvParam)		GetProcAddress(m_hMod, "CPGetProvParam");
+		fnCPSetProvParam	= (pCPSetProvParam)		GetProcAddress(m_hMod, "CPSetProvParam");
+		fnCPReleaseContext	= (pCPReleaseContext)	GetProcAddress(m_hMod, "CPReleaseContext");
+		fnCPGetUserKey		= (pCPGetUserKey)		GetProcAddress(m_hMod, "CPGetUserKey"); 
+		fnCPExportKey		= (pCPExportKey)		GetProcAddress(m_hMod, "CPExportKey"); 
+		fnCPImportKey		= (pCPImportKey)		GetProcAddress(m_hMod, "CPImportKey"); 
+		fnCPGetKeyParam		= (pCPGetKeyParam)		GetProcAddress(m_hMod, "CPGetKeyParam");
+		fnCPSetKeyParam		= (pCPSetKeyParam)		GetProcAddress(m_hMod, "CPSetKeyParam"); 
+		fnCPDestroyKey		= (pCPDestroyKey)		GetProcAddress(m_hMod, "CPDestroyKey");
+
+		memset(&m_table, 0, sizeof(m_table)); // UTL::
+		m_table.dwProvType = PROV_RSA_FULL;
+	}
+	~CCspLoad()
+	{
+		FreeLibrary(m_hMod);
+	}
+
+	BOOL MyCPAcquireContext(HCRYPTPROV *phProv, LPCSTR szContainer, DWORD dwFlags)
+	{
+		if (fnCPAcquireContext == NULL)
+		{
+			SetLastError(NTE_PROVIDER_DLL_FAIL);
+			return FALSE;
+		}
+		return fnCPAcquireContext(phProv, szContainer, dwFlags, &m_table);
+	}
+
+public:
+	pCPGetProvParam		fnCPGetProvParam;
+	pCPSetProvParam		fnCPSetProvParam;
+	pCPReleaseContext	fnCPReleaseContext;
+	pCPGetUserKey		fnCPGetUserKey;
+	pCPExportKey		fnCPExportKey;
+	pCPImportKey		fnCPImportKey;
+	pCPGetKeyParam		fnCPGetKeyParam;
+	pCPSetKeyParam		fnCPSetKeyParam;
+	pCPDestroyKey		fnCPDestroyKey;
+
+protected:
+	HMODULE m_hMod;
+	pCPAcquireContext fnCPAcquireContext;
+	VTableProvStruc m_table;
+};
+
+static CCspLoad m_cspLoad;
+
+// [2LEN][DATA]
+DWORD Crypt_EnumContainer(LPCSTR pszTokenName, LPBYTE pbContainerList, LPDWORD pdwContainersLen)
+{
+	*pdwContainersLen = 0;
+
+	HCRYPTPROV hProv = NULL;
+	if(!m_cspLoad.MyCPAcquireContext(&hProv, pszTokenName, CRYPT_VERIFYCONTEXT))
+		return GetLastError();
+	
+	DWORD i, dwDataLen;
+	for (i=0; ; )
+	{
+		dwDataLen = 256;
+		if(!m_cspLoad.fnCPGetProvParam(hProv, PP_ENUMCONTAINERS, pbContainerList+i+2, &dwDataLen, (i==0)? CRYPT_FIRST : 0))
+		{
+			//if(GetLastError() != ERROR_NO_MORE_ITEMS)
+			//{
+			//	// error
+			//}
+			break;
+		}
+
+		pbContainerList[i] = 0;
+		pbContainerList[i+1] = (BYTE)dwDataLen;
+		i += 2 + dwDataLen;
+	}
+	*pdwContainersLen = i;
+
+	m_cspLoad.fnCPReleaseContext(hProv, 0);
+	return 0;
+}
+
+
+DWORD Crypt_GetPublicKey(LPCSTR pszContainerName, DWORD dwKeyUsage, LPBYTE pbPubKey, LPDWORD pdwKeyLen)
+{
+	HCRYPTPROV hProv = NULL;
+	if(!m_cspLoad.MyCPAcquireContext(&hProv, pszContainerName, 0))
+		return GetLastError();
+
+	DWORD dwLastError = 0;
+	HCRYPTKEY hUserKey = NULL;
+	if (m_cspLoad.fnCPGetUserKey(hProv, dwKeyUsage, &hUserKey))
+	{
+		if (!m_cspLoad.fnCPExportKey(hProv, hUserKey, NULL, PUBLICKEYBLOB, 0, pbPubKey, pdwKeyLen))
+			dwLastError = GetLastError();
+		m_cspLoad.fnCPDestroyKey(hProv, hUserKey);
+	}
+	else
+	{
+		dwLastError = GetLastError();
+	}
+
+	m_cspLoad.fnCPReleaseContext(hProv, 0);
+	return dwLastError;}
+
+
+DWORD Crypt_GetCertData(LPCSTR pszContainerName, DWORD dwKeyUsage, LPBYTE pbCert, LPDWORD pdwCertLen)
+{
+	HCRYPTPROV hProv = NULL;
+	if(!m_cspLoad.MyCPAcquireContext(&hProv, pszContainerName, 0))
+		return GetLastError();
+
+	DWORD dwLastError = 0;
+	HCRYPTKEY hUserKey = NULL;
+	if (m_cspLoad.fnCPGetUserKey(hProv, dwKeyUsage, &hUserKey))
+	{
+		if (!m_cspLoad.fnCPGetKeyParam(hProv, hUserKey, KP_CERTIFICATE, pbCert, pdwCertLen, 0))
+			dwLastError = GetLastError();
+		m_cspLoad.fnCPDestroyKey(hProv, hUserKey);
+	}
+	else
+	{
+		dwLastError = GetLastError();
+	}
+
+	m_cspLoad.fnCPReleaseContext(hProv, 0);
+	return dwLastError;
+}
+
+
+DWORD Crypt_VerifyUserPin(LPCSTR pszContainerName, LPBYTE pbPass, BOOL bMustInput)
+{
+	HCRYPTPROV hProv = NULL;
+	if(!m_cspLoad.MyCPAcquireContext(&hProv, pszContainerName, CRYPT_VERIFYCONTEXT))
+		return GetLastError();
+	
+	DWORD dwLastError = 0;
+	DWORD dwFlags = bMustInput? (0x80000000) : 0;
+	if (!m_cspLoad.fnCPSetProvParam(hProv, PP_KEYEXCHANGE_PIN, pbPass, dwFlags))
+		dwLastError = GetLastError();
+
+	m_cspLoad.fnCPReleaseContext(hProv, 0);
+	return dwLastError;
+}
+
+
+DWORD Crypt_ImportP12Cert(LPCSTR pszContainerName, PCRYPT_P12CERT_INFO pP12Cert)
+{
+	DWORD dwLastError = 0;
+	HCRYPTPROV hProv = NULL;
+	if(!m_cspLoad.MyCPAcquireContext(&hProv, pszContainerName, 0))
+	{
+		if ((dwLastError = GetLastError()) != NTE_KEYSET_NOT_DEF)
+			return dwLastError;
+
+		// 容器不存在，则创建
+		if (!m_cspLoad.MyCPAcquireContext(&hProv, pszContainerName, CRYPT_NEWKEYSET))
+			return GetLastError();
+		dwLastError = 0;
+	}
+
+	HCRYPTKEY hKey = NULL;
+	if (m_cspLoad.fnCPImportKey(hProv, pP12Cert->baKeyData, pP12Cert->dwKeyLen, NULL, CRYPT_USER_PROTECTED, &hKey))
+	{
+		if (!m_cspLoad.fnCPSetKeyParam(hProv, hKey, KP_CERTIFICATE, pP12Cert->baCertData, 0))
+			dwLastError = GetLastError();
+		m_cspLoad.fnCPDestroyKey(hProv, hKey);
+	}
+	else
+	{
+		dwLastError = GetLastError();
+	}
+
+	m_cspLoad.fnCPReleaseContext(hProv, 0);
+	return dwLastError;
+}
+
+
+DWORD Crypt_DeleteContainer(LPCSTR pszContainerName, DWORD dwKeySpec)
+{
+	HCRYPTPROV hProv = NULL;
+	HCRYPTKEY hKey = NULL;
+	if (!m_cspLoad.MyCPAcquireContext(&hProv, pszContainerName, 0))
+		return GetLastError();
+	if (!m_cspLoad.fnCPGetUserKey(hProv, dwKeySpec, &hKey))
+		return GetLastError();
+
+	if (!m_cspLoad.fnCPSetKeyParam(hProv, hKey, KP_DELETE_CERT, NULL, NULL))
+		return GetLastError();
+
+	m_cspLoad.fnCPDestroyKey(hProv, hKey);
+	m_cspLoad.fnCPReleaseContext(hProv, 0);
+	return 0;
+}
+
+DWORD Crypt_EnumAllCerts(LPVOID pParam, DWORD dwLength)
+{
+	if (!m_cspLoad.fnCPGetProvParam(NULL, PP_GET_ALLCERT, (LPBYTE)pParam, &dwLength, 0))
+		return GetLastError();
+	return 0;
+}
+
+#endif // #ifndef ONKEY_CRYPT_NO_USE_CSP
+
+
+#ifndef ONKEY_CRYPT_NO_USE_WINCRYPT
+DWORD Crypt_Cert_GetProperty(LPBYTE pbCert, DWORD dwCertLen, DWORD dwProperty, LPVOID pbData)
+{
+	PCCERT_CONTEXT pCertInfo = CertCreateCertificateContext(CRYPT_INSIDE_ENCODING_TYPE_V, pbCert, dwCertLen);
+	if (pCertInfo == NULL)
+		return GetLastError();
+
+	DWORD dwRet = 0;
+	switch(dwProperty)
+	{
+	case CRYPT_PROPERTY_CERTNAME_SIMPLE:
+		dwRet = CertGetNameString(pCertInfo, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL, (LPTSTR)pbData, 128);
+		break;
+	case CRYPT_PROPERTY_CERTTIME_AFTER:
+		dwRet = sizeof(FILETIME);
+		memcpy(pbData, &(pCertInfo->pCertInfo->NotAfter), dwRet);
+		break;
+	case CRYPT_PROPERTY_CERT_DN:
+		dwRet = CertGetNameString(pCertInfo, CERT_NAME_RDN_TYPE, 0, NULL, (LPTSTR)pbData, 256);
+		break;
+	case CRYPT_PROPERTY_CERTTIME_BEFORE:
+		dwRet = sizeof(FILETIME);
+		memcpy(pbData, &(pCertInfo->pCertInfo->NotBefore), dwRet);
+		break;
+	case CRYPT_PROPERTY_CERTNAME_SIMPLE_ISSUER:
+		dwRet = CertGetNameString(pCertInfo, CERT_NAME_SIMPLE_DISPLAY_TYPE, CERT_NAME_ISSUER_FLAG, NULL, (LPTSTR)pbData, 256);
+		break;
+	case CRYPT_PROPERTY_CERT_DN_ISSUER:
+		dwRet = CertGetNameString(pCertInfo, CERT_NAME_RDN_TYPE, CERT_NAME_ISSUER_FLAG, NULL, (LPTSTR)pbData, 256);
+		break;
+	default:
+		break;
+	};
+
+	CertFreeCertificateContext(pCertInfo);
+	return (dwRet > 0)? 0 : NTE_FAIL;
+}
+
+BOOL Crypt_Cert_IsSelfSigned(LPBYTE pbCert, DWORD dwCertLen)
+{
+	BOOL bRet = FALSE;	
+	PCCERT_CONTEXT pCertInfo = CertCreateCertificateContext(CRYPT_INSIDE_ENCODING_TYPE_V, pbCert, dwCertLen);
+	if (pCertInfo != NULL)
+	{
+		WCHAR szIssue[256] = {0};
+		::CertGetNameStringW(pCertInfo, CERT_NAME_SIMPLE_DISPLAY_TYPE, CERT_NAME_ISSUER_FLAG, NULL, szIssue, 255 * sizeof(WCHAR));
+		WCHAR szIssueTo[256] = {0};
+		::CertGetNameStringW(pCertInfo, CERT_NAME_SIMPLE_DISPLAY_TYPE, NULL, NULL, szIssueTo, 255 * sizeof(WCHAR));
+		if(lstrcmpW(szIssue, szIssueTo) == 0)
+		{
+			bRet = TRUE;
+		}
+
+		//bRet = CertCompareCertificateName(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, &pCertInfo->pCertInfo->Subject, &pCertInfo->pCertInfo->Issuer);
+		CertFreeCertificateContext(pCertInfo);
+	}	
+
+	return bRet;
+}
+//
+//BOOL IsCACert(PCCERT_CONTEXT cert)
+//{
+//	CERT_EXTENSION rgExtensions[1];
+//	UTL::memset(rgExtensions, 0, sizeof(rgExtensions));
+//	PCERT_EXTENSION pExt = CertFindExtension(szOID_BASIC_CONSTRAINTS2, cert->pCertInfo->cExtension, cert->pCertInfo->rgExtension);
+//	if (pExt)
+//	{
+//		CERT_BASIC_CONSTRAINTS2_INFO info;
+//		DWORD cbInfo = sizeof(info);
+//		CryptDecodeObject(X509_ASN_ENCODING, X509_BASIC_CONSTRAINTS2, pExt->Value.pbData, pExt->Value.cbData, 0, &info, &cbInfo); 
+//		return info.fCA; 
+//	}
+//	return FALSE;
+//}
+
+DWORD Crypt_Cert_AddToUser(WCHAR *wszStore, LPBYTE pb, DWORD dw)
+{
+	BOOL b = TRUE;
+	HCERTSTORE hstore = NULL;			//证书库句柄;
+	PCCERT_CONTEXT pcertCtx = NULL;		//查询到的证书context;
+	hstore = CertOpenStore(CERT_STORE_PROV_SYSTEM,
+		0, 0, CERT_SYSTEM_STORE_CURRENT_USER, wszStore);//弹出对话框，允许用户确认
+	if(hstore)
+	{
+		pcertCtx = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, pb, dw);
+		if(pcertCtx)
+		{
+			b = CertAddCertificateContextToStore(hstore, pcertCtx, CERT_STORE_ADD_USE_EXISTING, NULL);
+			CertFreeCertificateContext(pcertCtx);
+		}
+		CertCloseStore(hstore, 0);
+	}
+
+	if(!b)  return GetLastError();
+
+	return 0;
+}
+
+// 增加证书到系统的MY证书存储区中
+DWORD Crypt_Cert_AddToSystem(LPCSTR pszCspName, LPCSTR pszContainerName, DWORD dwKeyUsage, LPBYTE pbCert, DWORD dwCertLen)
+{
+	HCERTSTORE hstore = NULL;			//证书库句柄;
+	PCCERT_CONTEXT pcertCtx = NULL;		//查询到的证书context;
+	CRYPT_KEY_PROV_INFO keyProvInfo;	//在证书库中查询的证书标准;
+	WCHAR szProvNameW[256], szConNameW[256];//UNICODE的CSP名称和容器名称;
+
+	DWORD dwAddDisposition = CERT_STORE_ADD_NEW;
+	DWORD dwLastError = 1;
+	BOOL bIsPersonal = TRUE;
+	WCHAR wszStoreType[MAX_PATH] ={0};
+
+	if (pszContainerName && pszCspName)
+	{
+		//2 指定需要插入系统的证书属性(CSP和容器名);
+		//2.1 将CSP名称转成UNICODE;
+		MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, pszCspName, -1, szProvNameW, 256);
+
+		//2.2 将容器名称转成UNICODE;
+		MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, pszContainerName, -1, szConNameW, 256);
+	}
+
+	//2.3 构造certificate context, 设定证书的CERT_KEY_PROV_INFO_PROP_ID属性;
+	pcertCtx = CertCreateCertificateContext(CRYPT_INSIDE_ENCODING_TYPE_V, pbCert, dwCertLen);
+	if(! pcertCtx)
+		goto err;	
+
+	//2.4 设定查询的证书的CERT_KEY_PROV_INFO_PROP_ID标准;
+	if (dwKeyUsage)
+	{
+		if (CertCompareCertificateName(CRYPT_INSIDE_ENCODING_TYPE_V, &pcertCtx->pCertInfo->Issuer, &pcertCtx->pCertInfo->Subject))
+		{
+			// 在Vista下写自签名的证书，我们不注册
+			dwLastError = 0;
+			goto err;
+		}
+		memset(&keyProvInfo, 0, sizeof(CRYPT_KEY_PROV_INFO)); // UTL::
+		keyProvInfo.pwszContainerName = szConNameW;
+		keyProvInfo.pwszProvName = szProvNameW;
+		keyProvInfo.dwProvType = PROV_RSA_FULL;
+		keyProvInfo.dwFlags = 0;
+		keyProvInfo.cProvParam = 0;
+		keyProvInfo.rgProvParam = NULL;
+		keyProvInfo.dwKeySpec = dwKeyUsage;	// AT_KEYEXCHANGE;
+
+		if(! CertSetCertificateContextProperty(pcertCtx, CERT_KEY_PROV_INFO_PROP_ID, 0,	&keyProvInfo))
+			goto err;
+		dwAddDisposition = CERT_STORE_ADD_REPLACE_EXISTING;
+	}
+
+	if( dwKeyUsage )
+	{
+		lstrcpyW(wszStoreType, L"MY");		
+	}	
+	else if ( CertCompareCertificateName(CRYPT_INSIDE_ENCODING_TYPE_V, &pcertCtx->pCertInfo->Issuer, &pcertCtx->pCertInfo->Subject) )
+	{
+		lstrcpyW(wszStoreType, L"ROOT");	
+		bIsPersonal = FALSE;
+		dwAddDisposition = CERT_STORE_ADD_USE_EXISTING;
+	}
+	else
+	{
+		lstrcpyW(wszStoreType, L"CA");				
+		dwAddDisposition = CERT_STORE_ADD_USE_EXISTING;
+		bIsPersonal = FALSE;
+	}
+	
+	if( bIsPersonal )
+	{
+		hstore = CertOpenStore(CERT_STORE_PROV_SYSTEM,
+				0, 0, CERT_SYSTEM_STORE_CURRENT_USER | CERT_STORE_NO_CRYPT_RELEASE_FLAG,wszStoreType );
+
+	}
+	else
+	{
+		hstore = CertOpenStore(CERT_STORE_PROV_SYSTEM,
+			0, 0, CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_NO_CRYPT_RELEASE_FLAG,wszStoreType );
+	}
+		
+	if(!hstore) // 系统出错;
+	{
+		//MessageBox(NULL, TEXT("hstore is null"), NULL, MB_OK);
+		goto err;
+	}
+
+	//3 将证书插入MY的系统证书存储区; // CERT_STORE_ADD_NEW
+	if (! CertAddCertificateContextToStore(hstore, pcertCtx, dwAddDisposition, NULL))
+	{
+		if (GetLastError() != CRYPT_E_EXISTS)
+			goto err;
+	}
+
+	dwLastError = 0;
+err: // 释放资源退出;
+	if (dwLastError == 1)
+		dwLastError = GetLastError();
+
+	if(pcertCtx) CertFreeCertificateContext(pcertCtx);
+	if(hstore) CertCloseStore(hstore, 0);
+
+	return (dwLastError);
+}
+
+#if(ONKEY_LOAD_ONE_KEY) // 只识别一个Key
+BOOL OnKeyIsCurrentRegSlot(LPCSTR pszCspName, DWORD dwSlotID)
+{
+	HCERTSTORE hstore = NULL;
+	PCCERT_CONTEXT pcertCtx = NULL;
+	PCCERT_CONTEXT pcertCtxDup = NULL; 
+	PCRYPT_KEY_PROV_INFO pkeyProvInfo = NULL;
+	WCHAR szProvNameW[256] = {0};
+
+	BOOL bIsFind = FALSE;
+
+	hstore = CertOpenSystemStore( NULL, TEXT("MY") );
+	if (!hstore)
+		return FALSE;
+
+	// 注册 "\\.\Tendyron Token (id)\<ConName>"
+	TCHAR szRegName[MAX_PATH] = {0};
+	::ZeroMemory(szRegName, sizeof(szRegName));
+	::wsprintf(szRegName, TEXT(CRYPT_TENDYRON_ONKEYTOKEN_D1), dwSlotID-1);
+
+	BYTE bakeyProvInfoBuff[2048];
+	pkeyProvInfo = (PCRYPT_KEY_PROV_INFO)bakeyProvInfoBuff;
+
+	MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, pszCspName, -1, szProvNameW, 256);
+
+	while (pcertCtx = CertEnumCertificatesInStore(hstore, pcertCtx))	
+	{
+		DWORD dwSize = sizeof(bakeyProvInfoBuff);
+		memset(pkeyProvInfo, 0, dwSize); 
+		if(! CertGetCertificateContextProperty(pcertCtx, CERT_KEY_PROV_INFO_PROP_ID, pkeyProvInfo, &dwSize))
+			continue;
+
+		//  Find out if this certificate is to be deleted. 
+		if (lstrcmpW( pkeyProvInfo->pwszProvName, szProvNameW) != 0)
+			continue;
+
+		if (memcmp(pkeyProvInfo->pwszContainerName, szRegName, lstrlen(szRegName)*sizeof(TCHAR)) != 0)
+		{
+			continue;
+		}
+		else
+		{
+			bIsFind = TRUE;
+		}
+
+		if(pcertCtxDup = CertDuplicateCertificateContext(pcertCtx))
+		{
+			if(CertFreeCertificateContext(pcertCtxDup))   
+			{
+				pcertCtxDup = NULL;
+			}
+		}
+	} // End of while
+
+	if (pcertCtx) CertFreeCertificateContext(pcertCtx);	
+	if (pcertCtxDup) CertFreeCertificateContext(pcertCtxDup);	
+	if (hstore) CertCloseStore( hstore, 0 );
+
+	return bIsFind;
+}
+
+#endif
+
+
+// 从MY证书存储区中删除指定证书
+DWORD Crypt_Cert_DeleteFromSystem(LPCSTR pszCspName, LPCSTR pszContainerName, DWORD dwKeyUsage)
+{
+	HCERTSTORE hstore = NULL;
+	PCCERT_CONTEXT pcertCtx = NULL;
+	PCCERT_CONTEXT pcertCtxDup = NULL; 
+	PCRYPT_KEY_PROV_INFO pkeyProvInfo = NULL;
+	WCHAR szProvNameW[256], szConNameW[256];
+
+	DWORD dwLastError = 1;
+
+	// 屏蔽 ljc 20080926
+	//pszContainerName = Crypt_Std_Identity2Name(pszContainerName, NULL);
+
+	// Open a system certificate store.
+	hstore = CertOpenSystemStore( NULL, TEXT("MY") );
+	if (!hstore)
+		goto err;
+
+	BYTE bakeyProvInfoBuff[2048];
+	pkeyProvInfo = (PCRYPT_KEY_PROV_INFO)bakeyProvInfoBuff;
+
+	MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, pszCspName, -1, szProvNameW, 256);
+	if (pszContainerName)
+		MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, pszContainerName, -1, szConNameW, 256);
+	else
+		szConNameW[0] = 0;
+
+	// Find the certificates in the system store. 
+	while (pcertCtx = CertEnumCertificatesInStore(hstore, pcertCtx))	
+	{
+		DWORD dwSize = sizeof(bakeyProvInfoBuff);
+		memset(pkeyProvInfo, 0, dwSize); // UTL::
+		if(! CertGetCertificateContextProperty(pcertCtx, CERT_KEY_PROV_INFO_PROP_ID, pkeyProvInfo, &dwSize))
+			continue;	// no Property
+
+		//  Find out if this certificate is to be deleted. 
+		if (lstrcmpW( pkeyProvInfo->pwszProvName, szProvNameW) != 0)
+			continue;
+
+		// Check ContainerName
+		if (dwKeyUsage == -1)
+		{
+			// 在vista下下载证书，我们程序注册证书没能覆盖下载组件注册的
+			// 如果IE注册的证书容器名没有前缀，则注销；有前缀进行比较
+			if (memcmp(pkeyProvInfo->pwszContainerName, L"\\\\.\\", 4*sizeof(WCHAR)) == 0)
+			{
+				//根据sn删除证书
+				if ((pszContainerName) && memcmp(pkeyProvInfo->pwszContainerName, szConNameW, lstrlenW(szConNameW)*sizeof(WCHAR)) != 0)
+					continue;		
+			}
+		}
+		else
+		{
+			//根据sn删除证书
+			//if ((pszContainerName) && lstrcmpW(pkeyProvInfo->pwszContainerName, szConNameW) != 0) 
+			if ((pszContainerName) && memcmp(pkeyProvInfo->pwszContainerName, szConNameW, lstrlenW(szConNameW)*sizeof(WCHAR)) != 0)
+				continue;
+
+			// 检测类型
+			if (dwKeyUsage && (pkeyProvInfo->dwKeySpec != dwKeyUsage))
+				continue;		
+		}
+
+		//-----------------------------------------------------------------
+		//  Create a duplicate pointer to the certificate to be 
+		//  deleted. In this way, the original pointer is not freed 
+		//  when the certificate is deleted from the store 
+		//  and the enumeration of the certificates in the store can
+		//  continue. If the original pointer is used, after the 
+		//  certificate is deleted, the enumeration loop stops.		
+		if(pcertCtxDup = CertDuplicateCertificateContext(pcertCtx))
+		{
+			// Delete the certificate.
+			if(CertDeleteCertificateFromStore(pcertCtxDup))   
+			{
+				pcertCtxDup = NULL;
+			} // error
+		}
+		
+	} // End of while
+
+	dwLastError = 0; 		
+
+err: // Clean up.
+	if (dwLastError == 1)
+		dwLastError = GetLastError();
+
+	if (pcertCtx) CertFreeCertificateContext(pcertCtx);	
+	if (pcertCtxDup) CertFreeCertificateContext(pcertCtxDup);	
+	if (hstore) CertCloseStore( hstore, 0 );
+
+	return (dwLastError);
+}
+#endif // #ifndef ONKEY_CRYPT_NO_USE_WINCRYPT
+
+
+#ifdef ONKEY_CRYPT_USE_EXT_TOOL
+DWORD Crypt_Cert_GetTrustStatus(LPBYTE pbCert, DWORD dwCertLen)
+{
+	CERT_ENHKEY_USAGE        EnhkeyUsage;
+	CERT_USAGE_MATCH         CertUsage;  
+	CERT_CHAIN_PARA          ChainPara;
+
+	EnhkeyUsage.cUsageIdentifier = 0;
+	EnhkeyUsage.rgpszUsageIdentifier=NULL;
+	CertUsage.dwType = USAGE_MATCH_TYPE_AND;
+	CertUsage.Usage  = EnhkeyUsage;
+	ChainPara.cbSize = sizeof(CERT_CHAIN_PARA);
+	ChainPara.RequestedUsage=CertUsage;
+
+	PCCERT_CONTEXT pCertContext = ::CertCreateCertificateContext(CRYPT_INSIDE_ENCODING_TYPE_V, pbCert, dwCertLen);
+	if (pCertContext == NULL)
+		return GetLastError();
+
+	DWORD dwLastError = 0;
+	PCCERT_CHAIN_CONTEXT     pChainContext = NULL;
+	if(CertGetCertificateChain(
+		NULL,                  // use the default chain engine
+		pCertContext,          // pointer to the end certificate
+		NULL,                  // use the default time
+		NULL,                  // search no additional stores
+		&ChainPara,            // use AND logic and enhanced key usage 
+		//  as indicated in the ChainPara 
+		//  data structure
+		0,
+		NULL,                  // currently reserved
+		&pChainContext)) 
+	{
+		dwLastError = pChainContext->TrustStatus.dwErrorStatus; // CERT_TRUST_IS_PARTIAL_CHAIN
+	}
+	else
+	{
+		dwLastError = GetLastError();
+	}
+
+	CertFreeCertificateChain(pChainContext);
+	CertFreeCertificateContext(pCertContext);
+	return dwLastError;
+}
+
+
+typedef struct tagCRYPTUI_VIEWCERTIFICATE_STRUCT
+{ 
+	DWORD dwSize;
+	HWND hwndParent;
+	DWORD dwFlags;
+	LPCTSTR szTitle;
+	PCCERT_CONTEXT pCertContext;
+	LPCSTR* rgszPurposes;
+	DWORD cPurposes;
+	HANDLE hWVTStateData;
+	BOOL fpCryptProviderDataTrustedUsage;
+	DWORD idxSigner;
+	DWORD idxCert;
+	BOOL fCounterSigner;
+	DWORD idxCounterSigner;
+	DWORD cStores;
+	HCERTSTORE* rghStores;
+	DWORD cPropSheetPages;
+	LPVOID rgPropSheetPages;	// LPCPROPSHEETPAGE
+	DWORD nStartPage;
+} CRYPTUI_VIEWCERTIFICATE_STRUCT,  *PCRYPTUI_VIEWCERTIFICATE_STRUCT;
+typedef const CRYPTUI_VIEWCERTIFICATE_STRUCT *PCCRYPTUI_VIEWCERTIFICATE_STRUCT;
+
+#define CryptUIDlgViewCertificate CryptUIDlgViewCertificateA
+typedef BOOL (WINAPI *pCryptUIDlgViewCertificate)(
+  PCCRYPTUI_VIEWCERTIFICATE_STRUCT pCertViewInfo,
+  BOOL* pfPropertiesChanged
+);
+DWORD Crypt_Cert_UIDlgView(HWND hwndParent, LPCTSTR pszTitle, LPBYTE pbCert, DWORD dwCertLen)
+{
+	PCCERT_CONTEXT pCertContext = CertCreateCertificateContext(CRYPT_INSIDE_ENCODING_TYPE_V, pbCert, dwCertLen);
+	if (pCertContext == NULL)
+		return GetLastError();
+
+	DWORD dwLastError = 0;
+	HMODULE hMod = ::LoadLibrary(_T("cryptui.dll"));
+
+#ifdef UNICODE
+	pCryptUIDlgViewCertificate fnViewCert = (pCryptUIDlgViewCertificate) GetProcAddress(hMod, "CryptUIDlgViewCertificateW");
+#else
+	pCryptUIDlgViewCertificate fnViewCert = (pCryptUIDlgViewCertificate) GetProcAddress(hMod, "CryptUIDlgViewCertificateA");
+#endif
+
+	if (fnViewCert)
+	{
+		CRYPTUI_VIEWCERTIFICATE_STRUCT vcstruct;
+		memset(&vcstruct, 0, sizeof(vcstruct)); // UTL::
+		vcstruct.dwSize = sizeof(vcstruct);
+		vcstruct.dwFlags = 0x00000010;// | // CRYPTUI_DISABLE_ADDTOSTORE;
+							//0x1000 ;	// CRYPTUI_DISABLE_EXPORT
+		vcstruct.hwndParent = hwndParent;
+		vcstruct.pCertContext = pCertContext;
+		vcstruct.nStartPage = 0;
+		vcstruct.szTitle = pszTitle;
+
+		BOOL fPropertiesChanged = FALSE;
+		if (!fnViewCert(&vcstruct, &fPropertiesChanged))
+			dwLastError = ::GetLastError();
+
+		FreeLibrary(hMod);
+	}
+	else
+	{
+		dwLastError = GetLastError();
+	}
+
+	CertFreeCertificateContext(pCertContext);
+	return dwLastError;
+}
+#endif // #ifdef ONKEY_CRYPT_USE_EXT_TOOL
+
+#ifdef ONKEY_CRYPT_USE_ASSIST
+BOOL Crypt_CheckRootCert(LPWSTR szIssueName)
+{
+	BOOL bRet = FALSE;
+	HCERTSTORE hStore;
+	PCCERT_CONTEXT pcContext;
+
+	hStore = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0,
+		0, CERT_SYSTEM_STORE_CURRENT_USER | CERT_STORE_NO_CRYPT_RELEASE_FLAG, L"ROOT");
+	if(hStore)
+	{
+		if(pcContext = CertFindCertificateInStore(hStore, (X509_ASN_ENCODING | PKCS_7_ASN_ENCODING), 
+			0, CERT_FIND_ISSUER_STR, szIssueName, NULL))
+		{
+			if(CertCompareCertificateName(CRYPT_INSIDE_ENCODING_TYPE_V, &pcContext->pCertInfo->Issuer, &pcContext->pCertInfo->Subject))
+				bRet = TRUE;
+		}
+		CertCloseStore(hStore, 0);
+	}
+	//如果当前用户证书store没有工行根证书，则查找系统用户下的store
+	if(!bRet)
+	{
+		hStore = CertOpenStore(CERT_STORE_PROV_SYSTEM,
+			0, 0, CERT_SYSTEM_STORE_LOCAL_MACHINE | CERT_STORE_NO_CRYPT_RELEASE_FLAG, TEXT("ROOT"));
+		if(hStore)
+		{
+			if(pcContext = CertFindCertificateInStore(hStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 
+				0, CERT_FIND_ISSUER_STR, szIssueName, NULL))
+			{
+				if(CertCompareCertificateName(CRYPT_INSIDE_ENCODING_TYPE_V, &pcContext->pCertInfo->Issuer, &pcContext->pCertInfo->Subject))
+					bRet = TRUE;
+			}
+			CertCloseStore(hStore, 0);
+		}
+	}
+
+	//两者都不存在，则根证书没有安装
+	return bRet;
+};
+#endif

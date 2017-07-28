@@ -1,0 +1,69 @@
+#ifndef ONKEY_CRYPT_H_
+#define ONKEY_CRYPT_H_
+
+#define CRYPT_TENDYRON_ONKEYTOKEN_D1 "\\\\.\\Tendyron OnKeyToken %d\\"
+
+#define CRYPT_TENDYRON_S1 "\\\\.\\Tendyron %s\\"
+
+
+#ifndef ONKEY_CRYPT_NO_USE_CSP
+
+typedef struct CRYPT_P12CERT_INFO
+{
+	DWORD dwType;
+	DWORD dwKeyLen;
+	BYTE  baKeyData[0x1000];
+	DWORD dwCertLen;
+	BYTE  baCertData[0x1000];
+}CRYPT_P12CERT_INFO, *PCRYPT_P12CERT_INFO;
+
+
+// [2LEN][DATA]
+//DWORD Crypt_LoadCsp(LPCSTR pszCspDll);
+
+DWORD Crypt_EnumContainer(LPCSTR pszTokenName, LPBYTE pbContainerList, LPDWORD pdwContainersLen);
+
+DWORD Crypt_GetPublicKey(LPCSTR pszContainerName, DWORD dwKeyUsage, LPBYTE pbPubKey, LPDWORD pdwKeyLen);
+
+DWORD Crypt_GetCertData(LPCSTR pszContainerName, DWORD dwKeyUsage, LPBYTE pbCert, LPDWORD pdwCertLen);
+
+DWORD Crypt_VerifyUserPin(LPCSTR pszContainerName, LPBYTE pbPass, BOOL bMustInput);
+
+DWORD Crypt_ImportP12Cert(LPCSTR pszContainerName, PCRYPT_P12CERT_INFO pP12Cert);
+
+DWORD Crypt_DeleteContainer(LPCSTR pszContainerName, DWORD dwKeySpec);
+
+DWORD Crypt_EnumAllCerts(LPVOID pParam, DWORD dwLength);
+
+#endif // #ifndef ONKEY_CRYPT_NO_USE_CSP
+
+
+#ifndef ONKEY_CRYPT_NO_USE_WINCRYPT
+#define CRYPT_PROPERTY_CERTNAME_SIMPLE			1
+#define CRYPT_PROPERTY_CERTTIME_AFTER			2
+#define CRYPT_PROPERTY_CERT_DN					3
+#define CRYPT_PROPERTY_CERTTIME_BEFORE			4
+#define CRYPT_PROPERTY_CERTNAME_SIMPLE_ISSUER	5
+#define CRYPT_PROPERTY_CERT_DN_ISSUER			6
+
+DWORD Crypt_Cert_GetProperty(LPBYTE pbCert, DWORD dwCertLen, DWORD dwProperty, LPVOID pbData);
+
+BOOL Crypt_Cert_IsSelfSigned(LPBYTE pbCert, DWORD dwCertLen);
+DWORD Crypt_Cert_AddToSystem(LPCSTR pszCspName, LPCSTR pszContainerName, DWORD dwKeyUsage, LPBYTE pbCert, DWORD dwCertLen);
+DWORD Crypt_Cert_AddToUser(WCHAR *wszStore, LPBYTE pb, DWORD dw);
+DWORD Crypt_Cert_DeleteFromSystem(LPCSTR pszCspName, LPCSTR pszConName, DWORD dwKeyUsage);
+#endif // #ifndef ONKEY_CRYPT_NO_USE_WINCRYPT
+
+#ifdef ONKEY_CRYPT_USE_EXT_TOOL
+DWORD Crypt_Cert_GetTrustStatus(LPBYTE pbCert, DWORD dwCertLen);
+DWORD Crypt_Cert_UIDlgView(HWND hwndParent, LPCTSTR pszTitle, LPBYTE pbCert, DWORD dwCertLen);
+#endif
+
+#if(ONKEY_LOAD_ONE_KEY) // 只识别一个Key
+BOOL OnKeyIsCurrentRegSlot(LPCSTR pszCspName, DWORD dwSlotID);
+#endif
+
+#ifdef ONKEY_CRYPT_USE_ASSIST
+BOOL Crypt_CheckRootCert(LPWSTR szIssueName);
+#endif
+#endif // #ifndef ONKEY_CRYPT_H_

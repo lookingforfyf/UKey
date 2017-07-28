@@ -1,0 +1,1472 @@
+#ifndef __CCB_DETECT_H__
+#define __CCB_DETECT_H__
+/*
+int  CheckSoftSetup(char*,int*);	// 检测驱动安装
+bool CSPRegItemIsExist();			// CSP选项是否存在
+bool CheckCSPRegItem();				// 检测CSP选项
+bool SoftRegItemIsExist();			// 软件用到的注册表选项是否存在
+bool CheckSoftRegItem();			// 检测软件用到的注册表选项
+
+bool SoftCurUserRegItemIsExist();	// 软件用到的注册表选项(HKEY_CURRENT_USER)是否存在
+bool CheckCurUserSoftRegItem();		// 检测软件用到的注册表选项(HKEY_CURRENT_USER)
+
+bool SoftSetupFileItemIsExist();	// 安装包用到的注册表选项是否存在
+bool CheckSetupFileRegItem();		// 检测安装包用到的注册表选项
+bool SoftAllFileIsComplete();		// 所有安装包安装的文件 是否存在
+
+bool CCBSNCtrlComIsSetup();			// 控件是否安装
+bool RootCertIsReg();				// 根证书是否注册
+
+bool FindRootIssuerCert();			// 查找CCB CA ROOT根证
+
+bool GetServiceStatus();			// 获取服务状态
+bool SysServiceIsRun(LPCTSTR);		// 根据服务名称判定服务是否运行
+bool ProcessIsRun(LPCTSTR);			// 根据进程名称判定进程是否运行
+
+*/
+
+//
+// 检测驱动安装情况
+// 检测选项
+//
+#include <tlhelp32.h> 
+#include <winsvc.h>
+#include <WinSCard.h>
+#include "OnKeyPreDef.h"
+#include "WinVersion.h"
+#include "CCBError.h"
+#include "OnKeyLog.h"
+#include "WinCrypt.h"
+#include <shellapi.h>
+#include <shlwapi.h>
+
+#include "ModulVer.h"
+
+#include "OnKeyCrypt.h"
+#pragma comment(lib, "Winscard.lib")
+//#pragma comment(lib, ONKEY_TOKEN_LIBNAME_A)
+
+
+// CSP选项是否存在
+static bool CSPRegItemIsExist()
+{
+	bool bRet = true;
+
+	LogEntry("CSPRegItemIsExist", "begin...");
+
+	bRet = (FALSE == Reg_ProfileNotExist( ONKEY_CSP_REG_PATH )); //64, 32全部检查
+
+	//如果是64位操作系统，32进程的话，还需要找32位程序对应的注册表信息
+#ifdef _M_IX86
+	if(OS::g_WinVersion.Is64())
+		bRet &= (FALSE == Reg_ProfileNotExistEx(ONKEY_CSP_REG_PATH, KEY_WOW64_32KEY) );
+#endif
+
+	LogEntry("CSPRegItemIsExist", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+static BYTE CSP_SIGN_VALUE[] = {0xAD, 0x25, 0xF6, 0xBF, 0xD8, 0xDA, 0x95, 0xD5, 0xD6, 0xAB, 0x7A, 0x2A, 0xBD, 0xC7, 0xE2, 0x1E, 0xCC, 0xF8, 0xC5, 0xFE, 0x67, 0xC0, 0x90, 0x80, 0xCC, 0x70, 0xC3, 0x07, 0xD0, 0x03, 0xDB, 0x67, 0x47, 0x48, 0x0C, 0x17, 0xC7, 0xB3, 0x37, 0xDA, 0x69, 0xD9, 0x22, 0x9F, 0xC9, 0x68, 0x82, 0xC4, 0x4E, 0xE7, 0x29, 0x65, 0x1A, 0x15, 0xBC, 0x98, 0x8B, 0x05, 0x4B, 0x24, 0xEE, 0xC5, 0x86, 0x2B, 0x27, 0xE5, 0x54, 0x24, 0x11, 0x9F, 0x18, 0x05, 0x46, 0xB8, 0x40, 0xB4, 0x88, 0x26, 0xB6, 0xE3, 0x70, 0xD5, 0x85, 0x06, 0xA8, 0x59, 0x01, 0x76, 0xD6, 0x8F, 0xEF, 0x09, 0x59, 0xB0, 0x55, 0x71, 0x8B, 0xAB, 0xE3, 0xDE, 0xB2, 0xBF, 0x4B, 0x77, 0x95, 0x0A, 0x0D, 0x68, 0x27, 0x2E, 0xD0, 0x4E, 0x1D, 0x86, 0xF4, 0x86, 0x85, 0x9F, 0x29, 0xBA, 0x2D, 0x4B, 0x4A, 0x0F, 0x8E, 0xAE, 0x76, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+static BYTE CSP_SIGN_VALUE_x64[] = {0x09, 0xD1, 0x6B, 0x70, 0x17, 0x08, 0x18, 0xB1, 0x74, 0xA6, 0x0B, 0x9F, 0x8C, 0x28, 0xC1, 0x66, 0x9B, 0xF3, 0x49, 0x16, 0x7D, 0xD8, 0x11, 0xC6, 0x07, 0xEF, 0x24, 0x18, 0x21, 0xDA, 0x4A, 0x67, 0x01, 0x02, 0x46, 0x22, 0x0E, 0x40, 0x53, 0x1B, 0xCC, 0xD3, 0x2E, 0x78, 0x41, 0xA7, 0x4C, 0x18, 0x3B, 0xA0, 0x0F, 0x3B, 0x25, 0x84, 0x4B, 0x76, 0x70, 0x6E, 0x61, 0x74, 0xB3, 0x36, 0x02, 0x54, 0x24, 0x48, 0xEB, 0xA6, 0x8C, 0xEC, 0xD3, 0xC8, 0xB6, 0x59, 0xE2, 0x19, 0xDA, 0x31, 0x71, 0xCE, 0x9F, 0x16, 0x42, 0xD3, 0x60, 0xB0, 0x78, 0x6C, 0x3C, 0x95, 0x00, 0xD3, 0x22, 0xBA, 0xFF, 0xC1, 0xB4, 0x39, 0xA1, 0xD4, 0xF8, 0x41, 0x7F, 0x75, 0x5B, 0xF8, 0x20, 0x3E, 0xBB, 0x19, 0x4B, 0x08, 0x60, 0xCD, 0x59, 0x9C, 0x3D, 0xAA, 0xCD, 0xE7, 0xBE, 0x7D, 0x26, 0xA7, 0xA2, 0xDD, 0xFE, 0x72, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+static bool CheckCSPRegItem()
+{
+#define CSP_IMAGE_PATH  TEXT("Image Path")
+#define CSP_SIGNATUE	TEXT("Signature")
+#define CSP_TYPE		TEXT("Type")
+
+#define CSP_TYPE_VALUE		1
+
+	// 检测CSP选项
+
+	bool bRet = true;
+
+	LogEntry("CheckCSPRegItem", "begin...");
+
+
+	// CSP选项 检测
+	TCHAR sLocalBuf[2048] = {0};
+	BYTE baBinaryBuf[2048] = {0};
+	DWORD dwBufLen = sizeof(sLocalBuf)/sizeof(TCHAR);
+
+	Reg_GetProfileString(ONKEY_CSP_REG_PATH, CSP_IMAGE_PATH, sLocalBuf);
+	bRet &= (lstrcmpi(sLocalBuf, ONKEY_CSP_PROV_DLL_SHELL_NAME) == 0);
+
+	if(OS::g_WinVersion.Is64())
+	{
+		dwBufLen = sizeof(baBinaryBuf);
+		Reg_GetProfileBinaryEx(ONKEY_CSP_REG_PATH, CSP_SIGNATUE, baBinaryBuf, &dwBufLen, KEY_WOW64_64KEY);
+		LogHex("64 64", baBinaryBuf, dwBufLen);
+		bRet &= (memcmp(CSP_SIGN_VALUE_x64, baBinaryBuf, sizeof(CSP_SIGN_VALUE_x64)) == 0);
+	}
+	else
+	{
+		dwBufLen = sizeof(baBinaryBuf);
+		Reg_GetProfileBinary(ONKEY_CSP_REG_PATH, CSP_SIGNATUE, baBinaryBuf, &dwBufLen);
+		LogHex("32 32", baBinaryBuf, dwBufLen);
+		bRet &= (memcmp(CSP_SIGN_VALUE, baBinaryBuf, sizeof(CSP_SIGN_VALUE)) == 0);
+	}
+
+	bRet &= (CSP_TYPE_VALUE == Reg_GetProfileInt(ONKEY_CSP_REG_PATH, CSP_TYPE, 0) );
+	LogEntry("CSP_TYPE", "Ret=%d", bRet);
+
+	//如果是64位操作系统，32进程的话，还需要找32位程序对应的注册表信息
+#ifdef _M_IX86
+		if(OS::g_WinVersion.Is64())
+		{
+			memset(sLocalBuf, 0x00, sizeof(sLocalBuf)/sizeof(TCHAR));
+
+			Reg_GetProfileStringEx(ONKEY_CSP_REG_PATH, CSP_IMAGE_PATH, sLocalBuf, KEY_WOW64_32KEY);
+			bRet &= (lstrcmpi(sLocalBuf, ONKEY_CSP_PROV_DLL_SHELL_NAME) == 0);
+			LogEntry("64 32 image", "Ret=%d", bRet);
+
+			dwBufLen = sizeof(baBinaryBuf);
+			memset(baBinaryBuf, 0x00, dwBufLen);
+
+			Reg_GetProfileBinaryEx(ONKEY_CSP_REG_PATH, CSP_SIGNATUE, baBinaryBuf, &dwBufLen, KEY_WOW64_32KEY);
+			LogHex("64 32", baBinaryBuf, dwBufLen);
+			bRet &= (memcmp(CSP_SIGN_VALUE, baBinaryBuf, sizeof(CSP_SIGN_VALUE)) == 0);
+			LogEntry("64 32 CSP_SIGN_VALUE", "Ret=%d", sizeof(CSP_SIGN_VALUE));
+
+			bRet &= (CSP_TYPE_VALUE == Reg_GetProfileIntEx(ONKEY_CSP_REG_PATH, CSP_TYPE, 0, KEY_WOW64_32KEY) );
+			LogEntry("64 32 CSP_TYPE", "Ret=%d", bRet);
+		}
+#endif
+
+	LogEntry("CheckCSPRegItem", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+// 软件用到的注册表选项是否存在
+static bool SoftRegItemIsExist()
+{
+	bool bRet = FALSE;
+
+	LogEntry("SoftRegItemIsExist", "begin...");
+
+	bRet = (FALSE == Reg_ProfileNotExistEx(ONKEY_INSIDE_REGPATH, 0));
+
+	//如果是64位操作系统，32进程的话，下面代码找32位程序对应的注册表信息
+#ifdef _M_IX86
+	if(OS::g_WinVersion.Is64())
+	{
+		bRet = (FALSE == Reg_ProfileNotExistEx(ONKEY_INSIDE_REGPATH, KEY_WOW64_32KEY));
+	}
+
+#endif
+	LogEntry("SoftRegItemIsExist", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+//
+// 检测软件用到的注册表选项
+//
+// 软件在HLM和HCU下都有注册表选项
+// 
+// 都需要对相应的注册表选项进行检测
+// 
+// 注意：版本号已经写死，软件版本号也已经写死，
+//       如果该DLL不和软件包一起发布的话，需要重新修改这部门代码。
+// 
+
+#define REG_SOFT_INSATLL_PATH	TEXT("SoftInstallPath")
+
+#define REG_COM_VERSION			TEXT("COMVersion")
+#define REG_SETUP_DISPLAY_VER	TEXT("SetupFileDisplayVersion")
+#define REG_SOFT_CODEPAGE		TEXT("SoftCodePage")
+#define REG_SOFT_VER			TEXT("SoftVersion")
+
+#define REG_COM_VER_VALUE				TEXT("1.0.0.1") // COM版本
+#define REG_SETUP_DISPLAY_VER_VALUE		1001
+#define REG_SOFT_VER_VALUE				TEXT("1.0.0.1")
+
+	const DWORD dwCurCodePageList[] = 
+	{
+		1028,
+		1033,
+		2052,
+	};
+
+static bool CheckSoftRegItem()
+{
+// 
+// 所有这些配置都对应打包脚本的注册表选项
+//
+// 注意：修改打包脚本时，需要同时修改这些配置信息
+//
+
+	bool bRet = true;
+
+	LogEntry("CheckSoftRegItem", "begin...");
+	
+	TCHAR sLocalBuf[2048] = {0}, sTempBuf[2048] = {0};
+	DWORD dwBufLen = sizeof(sLocalBuf);
+	DWORD dwCodePage = 0, dwOpenConfig = 0;
+
+//	// COMVersion
+	Reg_GetProfileStringEx(ONKEY_INSIDE_REGPATH, REG_COM_VERSION, sLocalBuf, 0); 
+	bRet &= (lstrcmpi(sLocalBuf, REG_COM_VER_VALUE) == 0);
+#ifdef _M_IX86
+	if(OS::g_WinVersion.Is64())
+	{
+		Reg_GetProfileStringEx(ONKEY_INSIDE_REGPATH, REG_COM_VERSION, sLocalBuf, KEY_WOW64_32KEY); 
+		bRet &= (lstrcmpi(sLocalBuf, REG_COM_VER_VALUE) == 0);
+	}
+#endif
+
+//	// SetupFileDisplayVersion
+	bRet &= ( REG_SETUP_DISPLAY_VER_VALUE == Reg_GetProfileIntEx(ONKEY_INSIDE_REGPATH, REG_SETUP_DISPLAY_VER, 0, 0) );
+#ifdef _M_IX86
+	if(OS::g_WinVersion.Is64())
+	{
+		bRet &= ( REG_SETUP_DISPLAY_VER_VALUE == Reg_GetProfileIntEx(ONKEY_INSIDE_REGPATH, REG_SETUP_DISPLAY_VER, 0, KEY_WOW64_32KEY) );
+	}
+#endif
+	// SoftCodePage
+	dwCodePage = Reg_GetProfileIntEx(ONKEY_INSIDE_REGPATH, REG_SOFT_CODEPAGE, 0, 0);//只检测标准路径下的就可以，安装包已经注册
+	int i;
+	for(i = 0; i<sizeof(dwCurCodePageList)/sizeof(DWORD); i++)
+	{
+		if( dwCurCodePageList[i] == dwCodePage)
+		{
+			break;
+		}
+	}
+	bRet &= (i < sizeof(dwCurCodePageList)/sizeof(DWORD)); // 没有找到语言类型 - CodePage
+
+
+	////SoftVersion
+	memset(sTempBuf, 0x00, dwBufLen);
+	Reg_GetProfileStringEx(ONKEY_INSIDE_REGPATH, REG_SOFT_VER, sTempBuf, 0);//只检测标准路径下的就可以，安装包已经注册
+
+	bRet &= (lstrcmpi(sTempBuf, REG_SOFT_VER_VALUE) == 0);
+
+	LogEntry("CheckSoftRegItem", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+//// 软件用到的注册表选项(HKEY_CURRENT_USER)是否存在
+//static bool SoftCurUserRegItemIsExist()
+//{
+//	bool bRet = FALSE;
+//
+//	LogEntry("SoftCurUserRegItemIsExist", "begin...");
+//
+//	bRet = (FALSE == Reg_ProfileNotExistEx(HKEY_CURRENT_USER, ONKEY_INSIDE_REGPATH, 0));
+//
+//	LogEntry("SoftCurUserRegItemIsExist", "End Ret=%d", bRet);
+//
+//	return bRet;
+//}
+
+// 检测软件用到的注册表选项(HKEY_CURRENT_USER)
+static bool CheckCurUserSoftRegItem()
+{
+#define REG_CUR_SOFT_OPEN_CONFIG		TEXT("SoftOpenWebConfig")
+#define REG_CUR_SOFT_AUTO_OPEN_URL		TEXT("SoftAutoOpenUrl")
+
+#define REG_CUR_SOFT_AUTO_OPEN_URL_VALUE TEXT("https://ibsbjstar.ccb.com.cn/")
+
+	bool bRet = true;
+
+	//TCHAR sTempBuf[2048] = {0};
+	//DWORD dwCodePage = 0, dwOpenConfig = 0;
+
+	//LogEntry("CheckCurUserSoftRegItem", "begin...");
+
+	//// HKEY_CURRENT_USER - SoftOpenWebConfig
+	//dwOpenConfig = Reg_GetProfileIntEx(HKEY_CURRENT_USER, ONKEY_INSIDE_REGPATH, REG_CUR_SOFT_OPEN_CONFIG, 0, 0);
+	//bRet &= ( (dwOpenConfig == 0) || (dwOpenConfig == 1) );//配置是否自动 打开网页
+
+
+	//// HKEY_CURRENT_USER - SoftAutoOpenUrl
+	//memset(sTempBuf, 0x00, sizeof(sTempBuf));
+	//Reg_GetProfileStringEx(HKEY_CURRENT_USER, ONKEY_INSIDE_REGPATH, REG_CUR_SOFT_AUTO_OPEN_URL, sTempBuf, 0);
+
+	//bRet &= (lstrcmpi(sTempBuf, REG_CUR_SOFT_AUTO_OPEN_URL_VALUE) == 0);
+
+	//LogEntry("CheckCurUserSoftRegItem", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+#define TDR_SETUP_INSTALL_REG_PATH		TEXT("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\AAAAAAAA-4DE1-4c79-9CE0-5D213D33DABC")
+#define TDR_SETUP_UNINSTALL_FILE_NAME	TEXT("uninst.exe")
+
+// 安装包用到的注册表选项是否存在
+static bool SoftSetupFileItemIsExist()
+{
+	bool bRet = FALSE;
+
+	LogEntry("SoftSetupFileItemIsExist", "begin...");
+
+
+	if(OS::g_WinVersion.Is64())
+	{
+		bRet = (FALSE == Reg_ProfileNotExistEx(TDR_SETUP_INSTALL_REG_PATH, KEY_WOW64_32KEY) );
+	}
+	else
+	{
+		bRet = (FALSE == Reg_ProfileNotExist(TDR_SETUP_INSTALL_REG_PATH) );
+	}
+
+	LogEntry("SoftSetupFileItemIsExist", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+static BOOL GetCSPFileVersion(CString *szCSPFileVersion);
+static BOOL CSPFileIsComplete();
+static bool SoftAllFileIsComplete();
+
+static BOOL CCB_RepairCSPItem();
+static BOOL CCB_RepairSoftItem();
+static BOOL CCB_RepairUninstallItem();
+
+static BOOL CCB_RepairFirefoxPluginItem();
+
+
+static BOOL CCB_ResetIESecurityLevel();
+
+// 修复安装包注册表信息
+static bool RepairSetupRegInfo()
+{
+	if((CSPFileIsComplete() == TRUE)
+		&& (SoftAllFileIsComplete() == TRUE))
+	{
+		CCB_RepairCSPItem();
+		CCB_RepairSoftItem();
+		CCB_RepairUninstallItem();
+		CCB_RepairFirefoxPluginItem();
+		return true;
+	}
+
+	return false;
+}
+
+#define REG_SETUP_DISPLAY_NAME		TEXT("DisplayName")
+#define REG_SETUP_DISPLAY_VERSION	TEXT("DisplayVersion")
+#define REG_SETUP_UNINSTALL_IMAGE	TEXT("UninstallString")
+#define REG_SETUP_PUBLISH					TEXT("Publisher")
+
+#define REG_SETUP_DISPLAY_NAME_VALUE		TEXT("Tendyron 193D4_CCB") // 安装程序显示的名称
+#define REG_SETUP_DISPLAY_VERSION_VALUE		1001                       // 安装包记录的版本号
+#define REG_SETUP_PUBLISH_VALUE						TEXT("Tendyron")
+#define REG_UNINSTALL_IMAGE_FILE_NAME_VALUE TEXT("\\") TDR_SETUP_UNINSTALL_FILE_NAME   // 卸载程序名称
+
+// 检测安装包用到的注册表选项
+static bool CheckSetupFileRegItem()
+{
+	//
+	bool bRet = true;
+
+	TCHAR sTempBuf[MAX_PATH] = {0};
+
+	LogEntry("CheckSetupFileRegItem", "begin...");
+
+	DWORD dwIndex = 0;
+	TCHAR szSoftUninstallPath[MAX_PATH] = {0}; 
+	::GetSystemDirectory(szSoftUninstallPath, MAX_PATH);// 系统路径
+
+	for(;szSoftUninstallPath[dwIndex] != L'\\';  dwIndex++)
+	{
+	}
+	szSoftUninstallPath[dwIndex] = 0x00;
+
+#define CCB_SOFT_INSTALL_BASE_PATH CCB_PROGRAMFILES_DIR CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_SOFT_INSTALL_DIR_PATH
+#define CCB_SOFT_INSTALL_BASE_PATH_64 CCB_PROGRAMFILES_DIR_x64 CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_SOFT_INSTALL_DIR_PATH
+
+	if(OS::g_WinVersion.Is64())
+	{
+		lstrcat(szSoftUninstallPath, CCB_SOFT_INSTALL_BASE_PATH_64);
+		lstrcat(szSoftUninstallPath, REG_UNINSTALL_IMAGE_FILE_NAME_VALUE);
+	}
+	else
+	{
+		lstrcat(szSoftUninstallPath, CCB_SOFT_INSTALL_BASE_PATH);
+		lstrcat(szSoftUninstallPath, REG_UNINSTALL_IMAGE_FILE_NAME_VALUE);
+	}
+	
+	memset(sTempBuf, 0x00, sizeof(sTempBuf));
+	if(OS::g_WinVersion.Is64())
+	{
+		Reg_GetProfileStringEx(TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_UNINSTALL_IMAGE, sTempBuf, KEY_WOW64_32KEY);
+	}
+	else
+	{
+		Reg_GetProfileStringEx(TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_UNINSTALL_IMAGE, sTempBuf, 0);
+	}
+
+	bRet &= (lstrcmpi(szSoftUninstallPath, sTempBuf) == 0);
+
+	// firefox插件的注册信息注册表信息
+	// ????????
+
+	LogEntry("CheckSetupFileRegItem", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+//
+// 所有安装包安装的文件 是否 存在
+// 
+// 遍历所有的安装路径查找所有文件是否存在
+//
+static bool FileIsExist(LPCTSTR psPathName, LPCTSTR psFileName)
+{
+	LogEntry("FileIsExist", "begin...");
+
+	bool bRet = false;
+	WIN32_FIND_DATA wfd = {0}; 
+
+	TCHAR sFullPathName[MAX_PATH] = {0};
+	lstrcpy(sFullPathName, psPathName);
+	lstrcat(sFullPathName, TEXT("\\"));
+	lstrcat(sFullPathName, psFileName);
+
+	HANDLE hFile = FindFirstFile(sFullPathName, &wfd);
+	if(hFile != INVALID_HANDLE_VALUE)
+	{ 
+		do 
+		{
+			if( lstrcmpi( wfd.cFileName, psFileName) == 0)
+			{
+				bRet = true;
+				break;
+			}
+		}
+		while(FindNextFile(hFile,&wfd)); 
+
+		FindClose(hFile);
+	}
+
+	LogEntry("FileIsExist", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+static BOOL CSPFileIsComplete()
+{
+	LogEntry("CSPFileIsComplete", "begin...");
+
+	BOOL bRet = true;
+	
+	TCHAR sFileInstallPath[MAX_PATH] = {0}, sSysPath[MAX_PATH] = {0};
+
+	// 文件安装路径
+	Reg_GetProfileStringEx(ONKEY_INSIDE_REGPATH, REG_SOFT_INSATLL_PATH, sFileInstallPath, KEY_WOW64_32KEY);
+	
+	// 系统路径
+	::GetSystemDirectory(sSysPath, MAX_PATH);
+
+	if( lstrlen(sFileInstallPath) <= 0 || lstrlen(sSysPath) <= 0) // 路径获取失败
+	{
+		return false;
+	}
+
+	TCHAR szFileP[MAX_PATH];
+	//需要检测32、64两个system32下的文件
+	if(OS::CWinVersion::Is64())
+	{
+		//检测system32下, 32 and 64进程
+		OS::g_WinVersion.DisableWow64Redirection();
+		wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_CSP_PROV_DLL_SHELL_NAME);
+		bRet &= PathFileExists(szFileP);
+		wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_CSP_PROV_DLLNAME);
+		bRet &= PathFileExists(szFileP);
+		wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_P11_DLLNAME);
+		bRet &= PathFileExists(szFileP);
+		wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_TOKEN_DLLNAME);
+		bRet &= PathFileExists(szFileP);
+		wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_DEVXX_DLLNAME);
+		bRet &= PathFileExists(szFileP);
+		wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_PINPAD_DLLNAME);
+		bRet &= PathFileExists(szFileP);
+		wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_VD_DLLNAME);
+		bRet &= PathFileExists(szFileP);
+		OS::g_WinVersion.EnableWow64Redirection();
+	}
+
+	//os 32 and os 64下，32位进程
+	wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_CSP_PROV_DLL_SHELL_NAME);
+	bRet &= PathFileExists(szFileP);
+	wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_CSP_PROV_DLLNAME);
+	bRet &= PathFileExists(szFileP);
+	wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_P11_DLLNAME);
+	bRet &= PathFileExists(szFileP);
+	wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_TOKEN_DLLNAME);
+	bRet &= PathFileExists(szFileP);
+	wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_DEVXX_DLLNAME);
+	bRet &= PathFileExists(szFileP);
+	wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_PINPAD_DLLNAME);
+	bRet &= PathFileExists(szFileP);
+	wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_VD_DLLNAME);
+	bRet &= PathFileExists(szFileP);
+
+
+	if(OS::CWinVersion::Is64()) // 如果是64位进程的话，不需要检测SVR进程
+	{
+#ifdef _M_IX86
+		wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_SVR_REGCERTEXE);
+		bRet &= PathFileExists(szFileP);
+#endif
+	}
+	else
+	{
+		wsprintf(szFileP, TEXT("%s\\%s"), sSysPath, ONKEY_SVR_REGCERTEXE);
+		bRet &= PathFileExists(szFileP);
+	}
+
+	LogEntry("CSPFileIsComplete", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+static bool SoftAllFileIsComplete()
+{
+//#define CCID_DRIVER_CAT_FILE_NAME	TEXT("usbccid.CAT")
+//#define CCID_DRIVER_INF_FILE_NAME	TEXT("usbccid.inf")
+//#define CCID_DRIVER_SYS_FILE_NAME	TEXT("usbccid.sys")
+
+	bool bRet = true;
+
+	TCHAR sFileInstallPath[MAX_PATH] = {0}, sInstallSubPath[MAX_PATH] = {0}, sSysPath[MAX_PATH] = {0};
+
+	LogEntry("SoftAllFileIsComplete", "begin...");
+
+	DWORD dwIndex = 0;
+	::GetSystemDirectory(sFileInstallPath, MAX_PATH);// 系统路径
+
+	for(;sFileInstallPath[dwIndex] != L'\\';  dwIndex++)
+	{
+	}
+	sFileInstallPath[dwIndex] = 0x00;
+
+	if(OS::g_WinVersion.Is64())
+	{
+		lstrcat(sFileInstallPath, (CCB_PROGRAMFILES_DIR_x64 CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_SOFT_INSTALL_DIR_PATH));
+	}
+	else
+	{
+		lstrcat(sFileInstallPath, (CCB_PROGRAMFILES_DIR CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_SOFT_INSTALL_DIR_PATH));
+	}
+
+	lstrcat(sFileInstallPath, TEXT("\\"));
+
+	// 文件安装路径
+	//Reg_GetProfileStringEx(ONKEY_INSIDE_REGPATH, REG_SOFT_INSATLL_PATH, sFileInstallPath, KEY_WOW64_32KEY);
+	
+	// 系统路径
+	::GetSystemDirectory(sSysPath, MAX_PATH);
+
+	if( lstrlen(sFileInstallPath) <= 0 || lstrlen(sSysPath) <= 0) // 路径获取失败
+	{
+		return false;
+	}
+
+	if(!CSPFileIsComplete())
+	{
+		return false;
+	}
+
+	bRet &= FileIsExist(sFileInstallPath, ONKEY_TOOL_NAME);
+	bRet &= FileIsExist(sFileInstallPath, TDR_SETUP_UNINSTALL_FILE_NAME);
+
+//	bRet &= FileIsExist(sFileInstallPath, CCID_DRIVER_CAT_FILE_NAME);
+//	bRet &= FileIsExist(sFileInstallPath, CCID_DRIVER_INF_FILE_NAME);
+//	bRet &= FileIsExist(sFileInstallPath, CCID_DRIVER_SYS_FILE_NAME);
+
+	// 安装目录下的语言文件
+	memset(sInstallSubPath, 0x00, sizeof(sInstallSubPath));
+	lstrcat(sInstallSubPath, sFileInstallPath);
+	lstrcat(sInstallSubPath, ONKEY_LANGS_SUB_PATH_NAME);
+
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_LANG_FILE_NAME);
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_LANG_1028_FILE_NAME);
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_LANG_1033_FILE_NAME);
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_LANG_2052_FILE_NAME);
+
+
+	// 安装目录下的资源文件
+	memset(sInstallSubPath, 0x00, sizeof(sInstallSubPath));
+	lstrcat(sInstallSubPath, sFileInstallPath);
+	lstrcat(sInstallSubPath, ONKEY_RES_SUB_PATH_NAME);
+
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_D4S_LOGO_FILE_HAND); // 小手
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_D4S_LOGO_FILE_NAME); // Key-LOGO
+	//bRet &= FileIsExist(sInstallSubPath, ONKEY_IE_LOGO_FILE_NAME);
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_KEYBOARD_UP_LOGO_FILE_NAME);
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_KEYBOARD_SEL_LOGO_FILE_NAME);
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_KEYBOARD_GIF_FILE_NAME1);
+	bRet &= FileIsExist(sInstallSubPath, ONKEY_KEYBOARD_GIF_FILE_NAME2);
+
+	LogEntry("SoftAllFileIsComplete", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+static BOOL GetCSPVersion(LPBYTE pbCSPVer, LPDWORD pdwCSPVerLen)
+{
+	HCRYPTPROV hProv = NULL;
+	BOOL bRet = CryptAcquireContext(&hProv, NULL, ONKEY_CSP_PROV_NAME_T, PROV_RSA_FULL, 0);
+	if(bRet)
+	{
+		bRet = CryptGetProvParam(hProv, PP_GET_CCB_CSP_VERSION, pbCSPVer, pdwCSPVerLen, 0); 
+	}
+	if(hProv)
+	{
+		CryptReleaseContext(hProv, 0);
+	}
+	return bRet;
+}
+
+static int CheckSoftSetup(char *sCSPVer, int *pnCSPVerLen)
+{
+	LogEntry("CheckSoftSetup", "begin...");
+
+	int nRet = CCB_ERR_SUCCESS;
+
+	BYTE baVersionBuf[1024] = {0};
+	DWORD dwRetLen = sizeof(baVersionBuf);
+
+
+	// 先检测不存在的选项
+	if(!SoftRegItemIsExist()) // 软件用到的注册表选项是否存在
+	{
+		nRet = CCB_ERR_SOFT_NO_REG_CONFIG;
+		goto leave;
+	}
+
+	if(!CSPRegItemIsExist()) // 检测CSP是否存在注册表选项
+	{
+		nRet = CCB_ERR_SOFT_NO_REG_CONFIG;
+		goto leave;
+	}
+
+	// 逐步检测软件选项
+	if(!SoftAllFileIsComplete()) // 检测所有的安装文件
+	{
+		nRet = CCB_ERR_SOFT_NOT_SETUP;
+		goto leave;
+	}
+
+	if(!SoftSetupFileItemIsExist())// 软件包用到的注册表选项 是否存在
+	{
+		nRet = CCB_ERR_SOFT_NOT_SETUP;
+		goto leave;
+	}
+
+	if(!CheckSetupFileRegItem()) // 软件包用到的注册表选项 是否完整
+	{
+		nRet = CCB_ERR_SOFT_INVALID_REG_CONFIG;
+		goto leave;
+	}
+
+	// CSP检测
+
+	if(!CheckCSPRegItem()) // 检测注册表选项是否完整
+	{
+		nRet = CCB_ERR_SOFT_INVALID_REG_CONFIG;
+		goto leave;
+	}
+
+	if(!CheckSoftRegItem())  // 软件用到的注册表选项是否完整
+	{
+		nRet = CCB_ERR_SOFT_INVALID_REG_CONFIG;
+		goto leave;
+	}
+
+	//if(!SoftCurUserRegItemIsExist())  // 软件用到的注册表选项(HKEY_CURRENT_USER)是否存在
+	//{
+	//	nRet = CCB_ERR_SOFT_INVALID_REG_CONFIG;
+	//	goto leave;
+	//}
+
+	//if(!CheckCurUserSoftRegItem()) // 检测软件用到的注册表选项(HKEY_CURRENT_USER)
+	//{
+	//	nRet = CCB_ERR_SOFT_NO_REG_CONFIG;
+	//	goto leave;
+	//}
+
+	if(NULL != sCSPVer && NULL != pnCSPVerLen)
+	{
+
+		if(!GetCSPVersion(baVersionBuf, &dwRetLen) )
+		{
+			nRet = CCB_ERR_SOFT_NO_REG_CONFIG;
+			goto leave;
+		}
+
+		if(*pnCSPVerLen > (int)dwRetLen)
+		{
+			memcpy(sCSPVer, baVersionBuf, dwRetLen);
+			*pnCSPVerLen = dwRetLen;
+		}
+		else
+		{
+			*pnCSPVerLen = dwRetLen;
+			nRet = CCB_ERR_SUCCESS;
+			goto leave;
+		}
+	}
+
+leave:
+	
+	LogEntry("CheckSoftSetup", "End Ret=%d", nRet);
+
+	return nRet;
+}
+
+// 建行控件是否可用
+static bool CCBSNCtrlComIsSetup()
+{
+	bool bIsValid = false;
+
+	LogEntry("CCBSNCtrlComIsSetup", "begin...");
+
+	HRESULT hr = CoInitialize(NULL);
+	if(SUCCEEDED(hr))
+	{
+		LPWSTR pwsGuid = L"{48A7113A-2B2E-4ED3-9B26-5C21FABEB217}";//控件的GUID
+
+		if(pwsGuid)
+		{
+			CLSID clsid;
+			IUnknown* pIUnknown = NULL;
+
+			CLSIDFromString(pwsGuid, &clsid);
+
+			hr = CoCreateInstance(clsid, NULL, CLSCTX_ALL, __uuidof(IUnknown), reinterpret_cast<void**>(&pIUnknown));
+
+			if(SUCCEEDED(hr))
+			{
+				bIsValid = true;
+				if(pIUnknown)
+				{
+					pIUnknown->Release();
+				}
+			}
+		}
+		CoUninitialize();
+	}
+
+	LogEntry("CCBSNCtrlComIsSetup", "End Ret=%d", bIsValid);
+
+	return bIsValid;
+}
+
+
+// 查找CCB CA ROOT根证
+static bool FindRootIssuerCert(LPWSTR pwsIssueName)
+{
+	bool bRet = false;
+
+	LogEntry("FindRootIssuerCert", "begin...");
+	
+//	LPWSTR pwsIssueName = L"CCB CA ROOT";
+
+	HCERTSTORE hStore = NULL;
+	PCCERT_CONTEXT pcContext = NULL;
+
+	hStore = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
+	if(hStore)
+	{
+		if( pcContext = CertFindCertificateInStore(hStore, (X509_ASN_ENCODING | PKCS_7_ASN_ENCODING), 0, CERT_FIND_ISSUER_STR, pwsIssueName, pcContext) )
+		{
+			if(CertCompareCertificateName(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, &pcContext->pCertInfo->Issuer, &pcContext->pCertInfo->Subject))
+			{
+				bRet = true;
+			}
+		}
+		CertCloseStore(hStore, 0);
+	}
+	
+	if(!bRet)
+	{
+		hStore = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_LOCAL_MACHINE, L"ROOT");
+		if(hStore)
+		{
+			if(pcContext = CertFindCertificateInStore(hStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_ISSUER_STR, pwsIssueName, NULL))
+			{
+				if(CertCompareCertificateName(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, &pcContext->pCertInfo->Issuer, &pcContext->pCertInfo->Subject))
+				{
+					bRet = true;
+				}
+			}
+			CertCloseStore(hStore, 0);
+		}
+	}
+	if(!bRet)
+	{
+		hStore = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, 0, CERT_SYSTEM_STORE_USERS, L"ROOT");
+		if(hStore)
+		{
+			if(pcContext = CertFindCertificateInStore(hStore, X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 0, CERT_FIND_ISSUER_STR, pwsIssueName, NULL))
+			{
+				if(CertCompareCertificateName(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, &pcContext->pCertInfo->Issuer, &pcContext->pCertInfo->Subject))
+				{
+					bRet = true;
+				}
+			}
+			CertCloseStore(hStore, 0);
+		}
+	}
+
+	LogEntry("CCBSNCtrlComIsSetup", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+static bool TestRootIsReg()
+{
+	// 测试根证书
+#define REG_TEST_ROOT_CERT_PATH		TEXT("Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\8394662C8B382AD0407EF93F4732E3E8CD24702B")
+#define REG_TEST_ROOT_CERT_BLOB		TEXT("Blob")
+
+	LPBYTE pbTestRootCert =  (LPBYTE)("\x04\x00\x00\x00\x01\x00\x00\x00\x10\x00\x00\x00\x31\x89\x1a\x86\xcc\xdc\xc2\x75\xad\x4e\x19\xd1\xf4\x87\xa1\x1c\x14\x00\x00\x00\x01\x00\x00\x00\x14\x00\x00\x00\x0b\xd8\x5f\x74\x0d\x0a\x03\x23\x2f\x43\xb4\x24\xc1\xf8\xff\xfb\x7b\xf9\xa6\xc6\x19\x00\x00\x00\x01\x00\x00\x00\x10\x00\x00\x00\x91\x45\xc0\x11\x25\x98\x2b\xa6\xc6\x35\x71\x29\x83\xf3\x2d\xda\x03\x00\x00\x00\x01\x00\x00\x00\x14\x00\x00\x00\x83\x94\x66\x2c\x8b\x38\x2a\xd0\x40\x7e\xf9\x3f\x47\x32\xe3\xe8\xcd\x24\x70\x2b\x0f\x00\x00\x00\x01\x00\x00\x00\x10\x00\x00\x00\x09\x9c\x99\xfa\x09\x59\x14\x24\xc8\x1d\xce\x28\x37\x23\xdf\x7d\x20\x00\x00\x00\x01\x00\x00\x00\x06\x02\x00\x00\x30\x82\x02\x02\x30\x82\x01\x6b\xa0\x03\x02\x01\x00\x02\x01\x00\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x30\x47\x31\x16\x30\x14\x06\x03\x55\x04\x03\x13\x0d\x7a\x68\x61\x6e\x67\x79\x61\x6e\x20\x74\x65\x73\x74\x31\x0f\x30\x0d\x06\x03\x55\x04\x0a\x13\x06\x74\x65\x73\x74\x20\x6f\x31\x0f\x30\x0d\x06\x03\x55\x04\x0b\x13\x06\x54\x65\x73\x74\x4f\x75\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x30\x1e\x17\x0d\x30\x32\x31\x30\x31\x38\x30\x31\x35\x34\x35\x31\x5a\x17\x0d\x34\x37\x31\x30\x31\x37\x30\x31\x35\x34\x35\x31\x5a\x30\x47\x31\x16\x30\x14\x06\x03\x55\x04\x03\x13\x0d\x7a\x68\x61\x6e\x67\x79\x61\x6e\x20\x74\x65\x73\x74\x31\x0f\x30\x0d\x06\x03\x55\x04\x0a\x13\x06\x74\x65\x73\x74\x20\x6f\x31\x0f\x30\x0d\x06\x03\x55\x04\x0b\x13\x06\x54\x65\x73\x74\x4f\x75\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x30\x81\x9f\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01\x05\x00\x03\x81\x8d\x00\x30\x81\x89\x02\x81\x81\x00\xb3\xf3\x17\xdc\xcf\x58\x85\xc4\x6e\x77\x09\x1c\x93\x64\x38\x8b\x9d\x88\x4e\xcc\xb7\x3b\xe8\x66\x71\x31\xe2\x9d\x1a\x50\x7c\x0a\x36\x8f\x46\x9c\x83\x19\xbf\x79\x51\x11\xaa\xe6\xe4\xd3\xf6\x0a\xd2\xf2\x30\x58\x41\x0e\x31\x69\xf8\xbd\xe8\x59\x3b\xa8\x26\x8d\x6d\x52\x2e\x59\x54\x90\x3d\xda\x61\x9b\x21\x5f\x02\x5f\xc3\xf1\xab\x26\x2a\x17\xd3\x68\xb3\xf4\x7b\xa6\x03\x39\xe5\x78\x68\x01\x02\xa9\x6f\x2a\xfc\x37\xb3\x0c\x73\x5e\xd5\x03\xff\x76\xc6\xd6\xa0\x2e\xbd\x39\x31\x7e\x71\xe3\xe3\xb9\x38\xc0\x57\xde\x7d\x8d\x02\x03\x01\x00\x01\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x03\x81\x81\x00\x7f\x16\xda\x6a\xb3\xef\x83\xf6\x50\x4d\x37\xc5\xc6\x18\x18\x4f\x00\x4a\xf3\x7a\x71\x2d\xe6\x3b\x49\xda\x0f\xd1\x18\x1f\x97\xc0\x95\xff\x2d\x49\x85\x19\x18\xda\xde\x20\xec\x87\x64\x5a\x31\x0a\x28\x8b\x94\x04\x07\xc2\xe2\x28\xdd\xcc\x58\x3d\x4c\x9f\x03\x4f\xb3\x0e\x92\x13\x4d\x01\xc7\xd7\x54\xd0\x9e\x02\xc2\x68\x40\xb0\x68\xc1\x05\xff\x14\xd4\xb5\x07\x0d\x3a\xdc\x02\x12\x4d\xe5\xfe\x7f\x57\xb9\x9d\xd9\xbd\xeb\xf7\x51\x9f\x1a\x00\x3e\xf7\xbb\xc8\xf1\x9f\xd9\x7f\x82\x09\x6e\x31\xa6\xdc\xb5\x20\x71\xfa\x9b\xc0");
+	DWORD dwTestRootCertLen = 678;
+
+	BYTE baRegRootCert[2048] = {0};
+	DWORD dwRegRootCertLen = sizeof(baRegRootCert);
+
+	bool bRet = false;
+
+	LogEntry("TestRootIsReg", "begin...");
+
+	// HLM注册表下是否有根证书
+	Reg_GetProfileBinaryEx(REG_TEST_ROOT_CERT_PATH, REG_TEST_ROOT_CERT_BLOB, baRegRootCert, &dwRegRootCertLen, KEY_WOW64_32KEY);
+
+	if(dwRegRootCertLen == dwTestRootCertLen && 0 == memcmp(pbTestRootCert, baRegRootCert, dwTestRootCertLen))
+	{
+		bRet = true;
+	}
+
+	//// HCU注册表下是否有根证书
+	//dwRegRootCertLen = sizeof(baRegRootCert);
+	//memset(baRegRootCert, 0x00, sizeof(baRegRootCert));
+	//Reg_GetProfileBinary(HKEY_CURRENT_USER, REG_TEST_ROOT_CERT_PATH, REG_TEST_ROOT_CERT_BLOB, baRegRootCert, &dwRegRootCertLen);
+
+	//if(dwRegRootCertLen == dwTestRootCertLen && 0 == memcmp(pbTestRootCert, baRegRootCert, dwTestRootCertLen))
+	//{
+	//	return true;
+	//}
+
+	if( FindRootIssuerCert(L"zhangyan test") ) //主题和颁发者相同，都是"zhangyan test"
+	{
+		bRet = true;
+	}
+
+	LogEntry("TestRootIsReg", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+static bool ReleaseRootCertIsReg()
+{
+//  网络上下载的根证书
+//  #define REG_ROOT_CERT_PATH		TEXT("Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\3018E5D74DF29E3590F5BB8DF01AA7FC116BB4DE")
+//  #define REG_ROOT_CERT_BLOB		TEXT("Blob")
+
+//	LPBYTE pbRootCert = (LPBYTE)"\x03\x00\x00\x00\x01\x00\x00\x00\x14\x00\x00\x00\x30\x18\xe5\xd7\x4d\xf2\x9e\x35\x90\xf5\xbb\x8d\xf0\x1a\xa7\xfc\x11\x6b\xb4\xde\x20\x00\x00\x00\x01\x00\x00\x00\xbb\x02\x00\x00\x30\x82\x02\xb7\x30\x82\x02\x20\xa0\x03\x02\x01\x00\x02\x01\x16\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x30\x81\x8c\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x31\x0c\x30\x0a\x06\x03\x55\x04\x0a\x13\x03\x43\x43\x42\x31\x14\x30\x12\x06\x03\x55\x04\x0b\x13\x0b\x43\x43\x42\x5f\x4e\x65\x74\x62\x61\x6e\x6b\x31\x0b\x30\x09\x06\x03\x55\x04\x08\x13\x02\x42\x4a\x31\x14\x30\x12\x06\x03\x55\x04\x03\x13\x0b\x43\x43\x42\x20\x43\x41\x20\x52\x4f\x4f\x54\x31\x11\x30\x0f\x06\x03\x55\x04\x07\x13\x08\x58\x69\x20\x43\x68\x65\x6e\x67\x31\x23\x30\x21\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x09\x01\x16\x14\x63\x61\x2f\x7a\x68\x2f\x63\x63\x62\x40\x63\x63\x62\x2e\x63\x6f\x6d\x2e\x63\x6e\x30\x1e\x17\x0d\x39\x39\x30\x36\x32\x39\x30\x30\x30\x30\x30\x30\x5a\x17\x0d\x34\x39\x30\x36\x32\x39\x30\x30\x30\x30\x30\x30\x5a\x30\x81\x8c\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x31\x0c\x30\x0a\x06\x03\x55\x04\x0a\x13\x03\x43\x43\x42\x31\x14\x30\x12\x06\x03\x55\x04\x0b\x13\x0b\x43\x43\x42\x5f\x4e\x65\x74\x62\x61\x6e\x6b\x31\x0b\x30\x09\x06\x03\x55\x04\x08\x13\x02\x42\x4a\x31\x14\x30\x12\x06\x03\x55\x04\x03\x13\x0b\x43\x43\x42\x20\x43\x41\x20\x52\x4f\x4f\x54\x31\x11\x30\x0f\x06\x03\x55\x04\x07\x13\x08\x58\x69\x20\x43\x68\x65\x6e\x67\x31\x23\x30\x21\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x09\x01\x16\x14\x63\x61\x2f\x7a\x68\x2f\x63\x63\x62\x40\x63\x63\x62\x2e\x63\x6f\x6d\x2e\x63\x6e\x30\x81\x9f\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01\x05\x00\x03\x81\x8d\x00\x30\x81\x89\x02\x81\x81\x00\xa2\x3f\x25\x03\xf1\x32\x99\x9d\x84\x2f\xa2\xa8\x65\xe6\xdf\x59\x10\x2f\x6e\x58\xf8\x34\x14\xb7\x96\x45\xbd\x30\x11\x41\xce\x1a\xd0\x34\xdd\x3a\x17\xcf\xdf\xa3\x45\x5b\xe4\x43\xc4\x63\x64\x19\xc8\xee\xc6\x5f\xaa\x02\x71\xa1\x86\x38\x4b\x82\x4e\x4c\xa6\x40\xbe\xc1\x21\x28\x17\xdd\x5a\x9c\x55\x97\xa6\x10\x4f\x1e\x11\xbe\xb2\x52\x27\x41\x8b\xfb\xe2\x03\x91\x68\xb9\x9f\x72\x5c\x07\x7b\x5d\xf5\x0e\x00\x8f\x6b\x51\xed\x55\xc6\x90\xe4\x88\x58\x83\x3e\xc9\x8c\x0e\xa8\xec\x3b\xf2\xa5\x40\xe4\x7a\x94\xbf\x8e\xb1\x87\x02\x03\x01\x00\x01\xa3\x27\x30\x25\x30\x12\x06\x03\x55\x1d\x13\x01\x01\xff\x04\x08\x30\x06\x01\x01\xff\x02\x01\x02\x30\x0f\x06\x03\x55\x1d\x0f\x01\x01\xff\x04\x05\x03\x03\x00\x06\x00\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x03\x81\x81\x00\x77\xee\xa7\xa7\xc1\xc5\x87\x9a\x52\xd6\x9e\x73\x7f\x2b\xa6\xa9\x9f\x3e\x67\xb3\xce\x58\x07\xb6\xe3\xef\x58\xee\x2c\xc3\x3c\xd7\x0a\xe1\x08\x6b\xf1\xe2\xc1\x63\x53\x27\x19\x15\xa5\xd1\xc5\xbc\x49\x44\xb1\xc9\x6b\xd2\x8f\x48\xd5\x60\xbb\x21\x48\xa1\xaf\xe9\xe6\x7f\xc3\x74\xca\x22\x92\x91\x4c\xff\xa7\x9a\x2a\x45\x13\xc6\x69\x54\x53\xd6\xf0\x43\xf1\xf6\xe6\x9c\xd1\xc7\xf9\x9d\xd6\x09\x8c\x90\x72\x1e\x33\x19\x37\x7e\xba\x04\x4d\x84\x10\x1b\x90\xe2\xe2\xf6\x63\x2d\xef\x40\xaf\xc8\x7b\xd3\x14\xe9\xb6\xd2\xe5\x17";
+//	DWORD dwRootCertLen = 743;
+
+// 建行提供的根证书
+
+#define REG_ROOT_CERT_PATH		TEXT("Software\\Microsoft\\SystemCertificates\\Root\\Certificates\\8582B4AF7491B3D16636EEB32D44993D7DEE6C40")
+#define REG_ROOT_CERT_BLOB		TEXT("Blob")
+
+	LPBYTE pbRootCert = (LPBYTE)"\x04\x00\x00\x00\x01\x00\x00\x00\x10\x00\x00\x00\xa8\x47\x1b\x4a\x10\x8d\xb1\xe4\x46\x18\xb7\x6c\xf7\x78\x50\x60\x14\x00\x00\x00\x01\x00\x00\x00\x14\x00\x00\x00\x6e\x80\xb6\xc2\xb3\x94\xac\x65\xd2\x58\xbb\x58\xf2\xa6\xec\x34\x00\xdb\x06\xe2\x19\x00\x00\x00\x01\x00\x00\x00\x10\x00\x00\x00\xa8\xb5\x51\xe3\x46\x9b\xa7\x06\x98\x9a\xdb\xe1\x08\xbe\xbc\x94\x03\x00\x00\x00\x01\x00\x00\x00\x14\x00\x00\x00\x85\x82\xb4\xaf\x74\x91\xb3\xd1\x66\x36\xee\xb3\x2d\x44\x99\x3d\x7d\xee\x6c\x40\x0f\x00\x00\x00\x01\x00\x00\x00\x10\x00\x00\x00\x0b\x6c\x3f\x1e\x7d\x27\xb0\x27\xf0\xf0\xfb\x9a\xbb\x8b\x98\xab\x20\x00\x00\x00\x01\x00\x00\x00\xbb\x02\x00\x00\x30\x82\x02\xb7\x30\x82\x02\x20\xa0\x03\x02\x01\x02\x02\x01\x16\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x30\x81\x8c\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x31\x0c\x30\x0a\x06\x03\x55\x04\x0a\x13\x03\x43\x43\x42\x31\x14\x30\x12\x06\x03\x55\x04\x0b\x13\x0b\x43\x43\x42\x5f\x4e\x65\x74\x62\x61\x6e\x6b\x31\x0b\x30\x09\x06\x03\x55\x04\x08\x13\x02\x42\x4a\x31\x14\x30\x12\x06\x03\x55\x04\x03\x13\x0b\x43\x43\x42\x20\x43\x41\x20\x52\x4f\x4f\x54\x31\x11\x30\x0f\x06\x03\x55\x04\x07\x13\x08\x58\x69\x20\x43\x68\x65\x6e\x67\x31\x23\x30\x21\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x09\x01\x16\x14\x63\x61\x2f\x7a\x68\x2f\x63\x63\x62\x40\x63\x63\x62\x2e\x63\x6f\x6d\x2e\x63\x6e\x30\x1e\x17\x0d\x30\x39\x30\x36\x30\x31\x30\x30\x30\x30\x30\x30\x5a\x17\x0d\x31\x39\x30\x36\x30\x31\x30\x30\x30\x30\x30\x30\x5a\x30\x81\x8c\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x31\x0c\x30\x0a\x06\x03\x55\x04\x0a\x13\x03\x43\x43\x42\x31\x14\x30\x12\x06\x03\x55\x04\x0b\x13\x0b\x43\x43\x42\x5f\x4e\x65\x74\x62\x61\x6e\x6b\x31\x0b\x30\x09\x06\x03\x55\x04\x08\x13\x02\x42\x4a\x31\x14\x30\x12\x06\x03\x55\x04\x03\x13\x0b\x43\x43\x42\x20\x43\x41\x20\x52\x4f\x4f\x54\x31\x11\x30\x0f\x06\x03\x55\x04\x07\x13\x08\x58\x69\x20\x43\x68\x65\x6e\x67\x31\x23\x30\x21\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x09\x01\x16\x14\x63\x61\x2f\x7a\x68\x2f\x63\x63\x62\x40\x63\x63\x62\x2e\x63\x6f\x6d\x2e\x63\x6e\x30\x81\x9f\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01\x05\x00\x03\x81\x8d\x00\x30\x81\x89\x02\x81\x81\x00\xa2\x3f\x25\x03\xf1\x32\x99\x9d\x84\x2f\xa2\xa8\x65\xe6\xdf\x59\x10\x2f\x6e\x58\xf8\x34\x14\xb7\x96\x45\xbd\x30\x11\x41\xce\x1a\xd0\x34\xdd\x3a\x17\xcf\xdf\xa3\x45\x5b\xe4\x43\xc4\x63\x64\x19\xc8\xee\xc6\x5f\xaa\x02\x71\xa1\x86\x38\x4b\x82\x4e\x4c\xa6\x40\xbe\xc1\x21\x28\x17\xdd\x5a\x9c\x55\x97\xa6\x10\x4f\x1e\x11\xbe\xb2\x52\x27\x41\x8b\xfb\xe2\x03\x91\x68\xb9\x9f\x72\x5c\x07\x7b\x5d\xf5\x0e\x00\x8f\x6b\x51\xed\x55\xc6\x90\xe4\x88\x58\x83\x3e\xc9\x8c\x0e\xa8\xec\x3b\xf2\xa5\x40\xe4\x7a\x94\xbf\x8e\xb1\x87\x02\x03\x01\x00\x01\xa3\x27\x30\x25\x30\x12\x06\x03\x55\x1d\x13\x01\x01\xff\x04\x08\x30\x06\x01\x01\xff\x02\x01\x02\x30\x0f\x06\x03\x55\x1d\x0f\x01\x01\xff\x04\x05\x03\x03\x00\x06\x00\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x03\x81\x81\x00\x8e\x08\x7e\xc1\x87\xe0\x81\xbd\x96\x2a\x9c\xf9\xb8\xa9\xac\xc7\xbb\xec\x8c\xc0\xdb\xc1\x93\xc5\x29\x01\xc5\x2d\x19\x6b\x68\x58\x34\xad\xb3\x96\xaa\x72\xa9\x4d\x09\x8f\xe5\xcc\xdf\x95\x60\x21\xe1\x16\x7d\x5b\x26\xe9\xa9\xa5\x5d\x46\xd3\x19\x23\x81\x27\x57\x42\x36\xeb\x3d\x75\x6e\x0c\xcd\x8b\xb1\xfb\xe6\x8e\xbb\xa8\x95\xf6\x01\x15\x60\x90\x85\xed\x2f\x41\x9c\x32\xf1\xa8\x61\x8b\xe9\xe4\x89\x9c\x22\x74\xf3\xf3\xdd\x18\x67\x1d\x4b\xc0\x12\x10\x83\x90\x11\x90\x3c\x8e\x2b\xaa\x03\xa3\x12\x76\x9f\x7e\x39\xba\x8a";
+	DWORD dwRootCertLen = 859;
+
+	BYTE baRegRootCert[2048] = {0};
+	DWORD dwRegRootCertLen = sizeof(baRegRootCert);
+
+	bool bRet = false;
+
+	LogEntry("ReleaseRootCertIsReg", "begin...");
+
+	// 正式根证证书
+
+	// HLM注册表下是否有根证书
+	Reg_GetProfileBinaryEx(REG_ROOT_CERT_PATH, REG_ROOT_CERT_BLOB, baRegRootCert, &dwRegRootCertLen, KEY_WOW64_32KEY);
+
+	if(dwRegRootCertLen == dwRootCertLen && 0 == memcmp(pbRootCert, baRegRootCert, dwRootCertLen))
+	{
+		bRet = true;
+	}
+
+	//// HCU注册表下是否有根证书
+	//dwRegRootCertLen = sizeof(baRegRootCert);
+	//memset(baRegRootCert, 0x00, sizeof(baRegRootCert));
+	//Reg_GetProfileBinary(HKEY_CURRENT_USER, REG_ROOT_CERT_PATH, REG_ROOT_CERT_BLOB, baRegRootCert, &dwRegRootCertLen);
+
+	//if(dwRegRootCertLen == dwRootCertLen && 0 == memcmp(pbRootCert, baRegRootCert, dwRootCertLen))
+	//{
+	//	return true;
+	//}
+
+	if(FindRootIssuerCert(L"CCB CA ROOT")) // 主题和颁发者相同，都是"CCB CA ROOT"
+	{
+		bRet = true;
+	}
+
+	LogEntry("ReleaseRootCertIsReg", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+// 根证书是否注册
+static bool RootCertIsReg()
+{
+	return ReleaseRootCertIsReg();
+	//return ( TestRootIsReg() && ReleaseRootCertIsReg() );
+}
+
+// 根据进程名称判定进程是否运行
+static bool ProcessIsRun(LPCTSTR psProcName)
+{
+	bool bRet = false;
+
+	LogEntry("ProcessIsRun", "begin...", "psProcName = %s", psProcName);
+
+	HANDLE hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0) ; 
+	PROCESSENTRY32 pInfo; 
+	pInfo.dwSize = sizeof(pInfo); 
+	Process32First(hSnapShot, &pInfo);
+	do
+	{
+		char szProcess[MAX_PATH] = {0};
+#ifdef UNICODE 
+		WideCharToMultiByte(CP_ACP, 0, pInfo.szExeFile, (int)wcslen(pInfo.szExeFile), szProcess, MAX_PATH, NULL, NULL);
+#else
+		lstrcpyA(szProcess, pInfo.szExeFile);
+#endif
+		LogEntry("Enum Process name: %s", szProcess);
+		if(lstrcmpi((pInfo.szExeFile), psProcName) == 0)
+		{
+			bRet = true;
+			break;
+		}
+	}
+	while(Process32Next(hSnapShot, &pInfo) != FALSE);
+
+	LogEntry("ProcessIsRun", "End Ret=%d", bRet);
+
+	return bRet;
+}
+
+// 根据服务名称是否运行
+static bool SysServiceIsRun(LPCTSTR lpszServiceName)
+{
+	bool bRet = false;
+
+	LogEntry("SysServiceIsRun", "begin...");
+
+	SERVICE_STATUS stServiceStatus = {0};
+	SC_HANDLE schSCManager = ::OpenSCManager( NULL, NULL, SC_MANAGER_ENUMERATE_SERVICE ); 
+	if (schSCManager == NULL) 
+	{
+		LogEntry("OpenSCManager", "err %x", GetLastError());
+		bRet = false;
+	}
+	else
+	{
+		SC_HANDLE schService = ::OpenService( NULL, lpszServiceName, SERVICE_QUERY_STATUS);
+		if (schService == NULL)
+		{
+			LogEntry("OpenService", "err %x", GetLastError());
+			bRet = false;
+			goto leave;
+		}
+		else
+		{
+			if(!::QueryServiceStatus(schService, &stServiceStatus) )
+			{
+				LogEntry("QueryServiceStatus", "err %x", GetLastError());
+				bRet = false;
+			}
+			else
+			{
+				bRet = (SERVICE_RUNNING == stServiceStatus.dwCurrentState);
+			}
+			LogEntry("QueryServiceStatus", "cur state %x", stServiceStatus.dwCurrentState);
+			::CloseServiceHandle(schService);
+
+		}
+		//::CloseServiceHandle(schSCManager);	
+	}
+
+leave:
+
+	LogEntry("SysServiceIsRun", "End Ret=%d err %x", bRet, GetLastError());
+	
+	return bRet;
+}
+
+static bool GetSmartCardState()
+{
+	#define  SMART_CARD_SERVICE_NAME		TEXT("SCardSvr.exe")
+
+	bool bRet = true;
+
+	OS::CWinVersion OSVer;
+	if(OSVer.IsVistaLater())
+	{
+		SCARDCONTEXT    hSC;
+		LONG            lReturn;
+		// Establish the context.
+		lReturn = SCardEstablishContext(SCARD_SCOPE_SYSTEM,
+			NULL,
+			NULL,
+			&hSC);
+		if(lReturn == SCARD_E_NO_SERVICE)
+		{
+			bRet = false;
+		}
+
+		if(lReturn == SCARD_S_SUCCESS && hSC != NULL)
+		{
+			SCardReleaseContext(hSC);
+		}
+	}
+	else
+	{
+		bRet = ProcessIsRun( SMART_CARD_SERVICE_NAME );
+	}
+
+	return bRet;
+}
+
+
+
+// 获取服务状态
+static bool GetServiceStatus()
+{
+	bool bRet = true;
+
+	// 天地融Svr进程是否运行
+	bRet &= ProcessIsRun( ONKEY_SVR_REGCERTEXE );
+
+	// 检测智能卡服务进程
+	bRet = GetSmartCardState();
+
+	//bRet &= SysServiceIsRun( SMART_CARD_SERVICE_NAME );
+
+	return bRet;
+}
+
+static BOOL CCB_RepairIECOM()
+{
+	TCHAR sSysPath[MAX_PATH] = {0};
+	GetSystemDirectory(sSysPath, MAX_PATH);
+	CString strDesFilePath = sSysPath;
+	strDesFilePath += TEXT("\\");
+	CString strDesFile1,strDesFile2;
+	strDesFile1 = strDesFilePath;
+	strDesFile2 = strDesFilePath;
+
+	CString strComFile = CCB_IE_COM_NAME;
+
+	strDesFile1 += strComFile ;
+	CString strSvrFile = _T("regsvr32.exe");
+	strDesFile2 +=strSvrFile;
+	CString strExParam = TEXT("/i /s ");
+	strDesFile1 = strExParam + strDesFile1;
+	
+	SHELLEXECUTEINFO ShellInfo; 
+	memset(&ShellInfo, 0, sizeof(ShellInfo)); 
+	ShellInfo.cbSize = sizeof(ShellInfo);
+	ShellInfo.hwnd = NULL; 
+	if( !::IsUserAnAdmin())
+	{	
+		ShellInfo.lpVerb = _T("runas"); 
+	}
+	ShellInfo.lpFile =strDesFile2;//_T("regsvr32.exe"); 
+	ShellInfo.lpParameters=strDesFile1;//_T("ccb_tdrmanager.dll");
+	ShellInfo.nShow = SW_SHOWNORMAL; 
+	ShellInfo.fMask = SEE_MASK_NOCLOSEPROCESS; 
+
+	return ShellExecuteEx(&ShellInfo);
+}
+
+static BOOL CCB_RepairCSPItem()
+{
+	
+	// 检测CSP选项
+	//检查CSP版本
+	CString szCSPVer;
+	GetCSPFileVersion(&szCSPVer);
+	if(0 != lstrcmpi(ONKEY_CUSTUMER_VERSION, szCSPVer.GetBuffer()))
+		return FALSE;
+
+	//不需要修复
+	if(CSPRegItemIsExist()
+		&& CheckCSPRegItem())
+		return TRUE;
+
+    //修复CSP注册表信息
+	if(OS::g_WinVersion.Is64())
+	{
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, ONKEY_CSP_REG_PATH, CSP_IMAGE_PATH,  ONKEY_CSP_PROV_DLL_SHELL_NAME, KEY_WOW64_64KEY);
+		Reg_SetProfileBinaryEx(HKEY_LOCAL_MACHINE, ONKEY_CSP_REG_PATH, CSP_SIGNATUE,  CSP_SIGN_VALUE_x64, sizeof(CSP_SIGN_VALUE_x64), KEY_WOW64_64KEY);
+		Reg_SetProfileIntEx(HKEY_LOCAL_MACHINE, ONKEY_CSP_REG_PATH, CSP_TYPE,  ONKEY_CSP_TYPE, KEY_WOW64_64KEY);
+
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, ONKEY_CSP_REG_PATH, CSP_IMAGE_PATH, ONKEY_CSP_PROV_DLL_SHELL_NAME, KEY_WOW64_32KEY);
+		Reg_SetProfileBinaryEx(HKEY_LOCAL_MACHINE, ONKEY_CSP_REG_PATH, CSP_SIGNATUE, CSP_SIGN_VALUE, sizeof(CSP_SIGN_VALUE), KEY_WOW64_32KEY);
+		Reg_SetProfileIntEx(HKEY_LOCAL_MACHINE, ONKEY_CSP_REG_PATH, CSP_TYPE, ONKEY_CSP_TYPE, KEY_WOW64_32KEY);
+	}
+	else
+	{
+		Reg_SetProfileString(HKEY_LOCAL_MACHINE, ONKEY_CSP_REG_PATH, CSP_IMAGE_PATH,  ONKEY_CSP_PROV_DLL_SHELL_NAME);
+		Reg_SetProfileBinary(HKEY_LOCAL_MACHINE, ONKEY_CSP_REG_PATH, CSP_SIGNATUE,  CSP_SIGN_VALUE, sizeof(CSP_SIGN_VALUE));
+		Reg_SetProfileInt(HKEY_LOCAL_MACHINE, ONKEY_CSP_REG_PATH, CSP_TYPE,  ONKEY_CSP_TYPE);
+	}
+
+	return TRUE;
+}
+
+static BOOL CCB_RepairSoftItem()
+{
+	//不需要修复
+	if(SoftRegItemIsExist()
+		&& CheckSoftRegItem())
+		return TRUE;
+
+	DWORD dwIndex = 0;
+	TCHAR szSoftInstallPath[MAX_PATH] = {0} , szSoftInstallPath64[MAX_PATH] = {0}; 
+	::GetSystemDirectory(szSoftInstallPath, MAX_PATH);// 系统路径
+
+	for(;szSoftInstallPath[dwIndex] != L'\\';  dwIndex++)
+	{
+	}
+	szSoftInstallPath[dwIndex] = 0x00;
+	
+#define CCB_SOFT_INSTALL_BASE_PATH CCB_PROGRAMFILES_DIR CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_SOFT_INSTALL_DIR_PATH
+#define CCB_SOFT_INSTALL_BASE_PATH_64 CCB_PROGRAMFILES_DIR_x64 CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_SOFT_INSTALL_DIR_PATH
+
+	if(OS::g_WinVersion.Is64())
+	{
+		lstrcpy(szSoftInstallPath64, szSoftInstallPath);
+		lstrcat(szSoftInstallPath64, CCB_SOFT_INSTALL_BASE_PATH_64);
+	}
+	else
+	{
+		lstrcat(szSoftInstallPath, CCB_SOFT_INSTALL_BASE_PATH);
+	}
+	
+	//修复软件注册表信息
+	if(OS::g_WinVersion.Is64())
+	{
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_COM_VERSION,  REG_COM_VER_VALUE, KEY_WOW64_64KEY);
+		Reg_SetProfileIntEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SETUP_DISPLAY_VER,  REG_SETUP_DISPLAY_VER_VALUE, KEY_WOW64_64KEY);
+		Reg_SetProfileIntEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SOFT_CODEPAGE,  dwCurCodePageList[2], KEY_WOW64_64KEY);
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SOFT_VER,  REG_SOFT_VER_VALUE, KEY_WOW64_64KEY);
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SOFT_INSATLL_PATH, szSoftInstallPath64, KEY_WOW64_32KEY);
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_CUR_SOFT_AUTO_OPEN_URL, REG_CUR_SOFT_AUTO_OPEN_URL_VALUE, KEY_WOW64_32KEY);
+
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_COM_VERSION,  REG_COM_VER_VALUE, KEY_WOW64_32KEY);
+		Reg_SetProfileIntEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SETUP_DISPLAY_VER,  REG_SETUP_DISPLAY_VER_VALUE, KEY_WOW64_32KEY);
+		Reg_SetProfileIntEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SOFT_CODEPAGE,  dwCurCodePageList[2], KEY_WOW64_32KEY);
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SOFT_VER,  REG_SOFT_VER_VALUE, KEY_WOW64_32KEY);
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, REG_SOFT_INSATLL_PATH, szSoftInstallPath,  REG_SOFT_VER_VALUE, KEY_WOW64_32KEY);
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_CUR_SOFT_AUTO_OPEN_URL, REG_CUR_SOFT_AUTO_OPEN_URL_VALUE, KEY_WOW64_32KEY);
+	}
+	else
+	{
+		Reg_SetProfileString(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_COM_VERSION,  REG_COM_VER_VALUE);
+		Reg_SetProfileInt(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SETUP_DISPLAY_VER,  REG_SETUP_DISPLAY_VER_VALUE);
+		Reg_SetProfileInt(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SOFT_CODEPAGE,  dwCurCodePageList[2]);
+		Reg_SetProfileString(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SOFT_VER,  REG_SOFT_VER_VALUE);
+		Reg_SetProfileString(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_SOFT_INSATLL_PATH, szSoftInstallPath);
+		Reg_SetProfileString(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH, REG_CUR_SOFT_AUTO_OPEN_URL, REG_CUR_SOFT_AUTO_OPEN_URL_VALUE);
+	}
+	
+	return TRUE;
+}
+static BOOL CCB_RepairUninstallItem()
+{
+	//不需要修复
+	if(SoftSetupFileItemIsExist()
+		&& CheckSetupFileRegItem())
+		return TRUE;
+
+	DWORD dwIndex = 0;
+	TCHAR szSoftInstallPath[MAX_PATH] = {0} , szSoftUninstallPath[MAX_PATH] = {0}; 
+	::GetSystemDirectory(szSoftInstallPath, MAX_PATH);// 系统路径
+
+	for(;szSoftInstallPath[dwIndex] != L'\\';  dwIndex++)
+	{
+	}
+	szSoftInstallPath[dwIndex] = 0x00;
+
+#define CCB_SOFT_INSTALL_BASE_PATH CCB_PROGRAMFILES_DIR CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_SOFT_INSTALL_DIR_PATH
+#define CCB_SOFT_INSTALL_BASE_PATH_64 CCB_PROGRAMFILES_DIR_x64 CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_SOFT_INSTALL_DIR_PATH
+
+	if(OS::g_WinVersion.Is64())
+	{
+		lstrcat(szSoftInstallPath, CCB_SOFT_INSTALL_BASE_PATH_64);
+	}
+	else
+	{
+		lstrcat(szSoftInstallPath, CCB_SOFT_INSTALL_BASE_PATH);
+	}
+
+	lstrcpy(szSoftUninstallPath, szSoftInstallPath);
+	lstrcat(szSoftUninstallPath, REG_UNINSTALL_IMAGE_FILE_NAME_VALUE);
+
+	//修复卸载注册表信息
+	if(OS::g_WinVersion.Is64())
+	{	
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_DISPLAY_NAME,  REG_SETUP_DISPLAY_NAME_VALUE, KEY_WOW64_32KEY);
+		Reg_SetProfileIntEx(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_DISPLAY_VERSION,  REG_SETUP_DISPLAY_VERSION_VALUE, KEY_WOW64_32KEY);
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SOFT_INSATLL_PATH,  szSoftInstallPath, KEY_WOW64_32KEY);
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_UNINSTALL_IMAGE,  szSoftUninstallPath, KEY_WOW64_32KEY);
+		Reg_SetProfileStringEx(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_PUBLISH,  REG_SETUP_PUBLISH_VALUE, KEY_WOW64_32KEY);
+	}
+	else
+	{
+		Reg_SetProfileString(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_DISPLAY_NAME,  REG_SETUP_DISPLAY_NAME_VALUE);
+		Reg_SetProfileInt(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_DISPLAY_VERSION,  REG_SETUP_DISPLAY_VERSION_VALUE);
+		Reg_SetProfileString(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SOFT_INSATLL_PATH,  szSoftInstallPath);
+		Reg_SetProfileString(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_UNINSTALL_IMAGE,  szSoftUninstallPath);
+		Reg_SetProfileString(HKEY_LOCAL_MACHINE, TDR_SETUP_INSTALL_REG_PATH, REG_SETUP_PUBLISH,  REG_SETUP_PUBLISH_VALUE);
+	}
+
+	return TRUE;
+}
+
+//修复Firefox插件
+static BOOL CCB_RepairFirefoxPluginItem()
+{
+	DWORD dwIndex = 0;
+	TCHAR szFirefoxInstallPath[MAX_PATH] = {0} , szDllFilePathName01[MAX_PATH] = {0}, szDllFilePathName02[MAX_PATH] = {0}; 
+	::GetSystemDirectory(szFirefoxInstallPath, MAX_PATH);// 系统路径
+
+	for(;szFirefoxInstallPath[dwIndex] != L'\\';  dwIndex++)
+	{
+	}
+	szFirefoxInstallPath[dwIndex] = 0x00;
+
+#define CCB_PLUGINS_INSTALL_BASE_PATH_64 CCB_PROGRAMFILES_DIR_x64 CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_PLUGIN_PATH
+
+	if(OS::g_WinVersion.Is64())
+	{
+		lstrcat(szFirefoxInstallPath, CCB_PLUGINS_INSTALL_BASE_PATH_64);
+	}
+	else
+	{
+		lstrcat(szFirefoxInstallPath, CCB_PLUGINS_INSTALL_BASE_PATH);
+	}
+
+	lstrcpy(szDllFilePathName01, szFirefoxInstallPath);
+	lstrcpy(szDllFilePathName02, szFirefoxInstallPath);
+	lstrcat(szDllFilePathName01, TEXT("npTDRImportCertCtrl.dll"));
+	lstrcat(szDllFilePathName02, TEXT("npTDRSNctrl.dll"));
+
+	//npTDRImportCertCtrl
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRImportCertCtrl,version=1.0.0.1"),  TEXT("Description"), _T("Tendyron CCB ImportCert"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRImportCertCtrl,version=1.0.0.1"),  TEXT("GeckoVersion"), _T("1.9.0.14"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRImportCertCtrl,version=1.0.0.1"),  TEXT("Path"), szDllFilePathName01);
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRImportCertCtrl,version=1.0.0.1"),  TEXT("ProductName"), _T("TDRImportCertCtrl"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRImportCertCtrl,version=1.0.0.1"),  TEXT("Vendor"), _T("Tendyron Corporation"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRImportCertCtrl,version=1.0.0.1"),  TEXT("Version"), _T("1.0.0.1"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRImportCertCtrl,version=1.0.0.1\\MimeTypes\\application/x-tendyron-ccb-importcert-ctrl"),  TEXT("Description"), _T("Tendyron CCB ImportCert"));
+	
+	//npTDRSNctrl
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRSNctrl,version=1.0.0.1"),  TEXT("Description"), _T("Tendyron CCB Get SN"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRSNctrl,version=1.0.0.1"),  TEXT("GeckoVersion"), _T("1.9.0.14"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRSNctrl,version=1.0.0.1"),  TEXT("Path"), szDllFilePathName02);
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRSNctrl,version=1.0.0.1"),  TEXT("ProductName"), _T("TDRSNctrl"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRSNctrl,version=1.0.0.1"),  TEXT("Vendor"), _T("Tendyron Corporation"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRSNctrl,version=1.0.0.1"),  TEXT("Version"), _T("1.0.0.1"));
+	Reg_SetProfileString(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRSNctrl,version=1.0.0.1\\MimeTypes\\application/x-tendyron-ccb-usbkey-ctrl"),  TEXT("Description"), _T("Tendyron CCB Get SN"));
+
+	return true;
+}
+
+static BOOL GetModuleVersion(LPCTSTR modulename, VS_FIXEDFILEINFO *lpvi)
+{
+	struct TRANSLATION {
+		WORD langID;			// language ID
+		WORD charset;			// character set (code page)
+	} translation;
+
+	translation.charset = 1252;		// default = ANSI code page
+	memset(lpvi, 0, sizeof(VS_FIXEDFILEINFO));
+
+	// get module handle
+	TCHAR filename[_MAX_PATH];
+	HMODULE hModule = ::GetModuleHandle(modulename);
+	if (hModule==NULL && modulename!=NULL)
+		return FALSE;
+
+	// get module file name
+	DWORD len = GetModuleFileName(hModule, filename,
+		sizeof(filename)/sizeof(filename[0]));
+	if (len <= 0)
+		return FALSE;
+
+	// read file version info
+	DWORD dwDummyHandle; // will always be set to zero
+	len = GetFileVersionInfoSize(filename, &dwDummyHandle);
+	if (len <= 0)
+		return FALSE;
+
+	BYTE *pVersionInfo = new BYTE[len]; // allocate version info
+	if (!::GetFileVersionInfo(filename, 0, len, pVersionInfo))
+		return FALSE;
+
+	UINT iLen;
+	if (!VerQueryValue(pVersionInfo, _T("\\"), (LPVOID *)&lpvi, &iLen))
+		return FALSE;
+
+	if (VerQueryValue(pVersionInfo,
+		TEXT("\\VarFileInfo\\Translation"), (LPVOID *)&lpvi, &iLen) && iLen >= 4) {
+			translation = *(TRANSLATION*)lpvi;
+		}
+	
+	return FALSE;
+}
+
+//获取CSP文件版本号
+static BOOL GetCSPFileVersion(CString *szCSPFileVersion)
+{
+	if(NULL == szCSPFileVersion)
+		return FALSE;
+
+	CModuleVersion mv;
+	if(mv.GetFileVersionInfo(ONKEY_P11_DLLNAME))
+	{
+		szCSPFileVersion->Format(TEXT("V%d.%d.%d.%d"),
+			HIWORD(mv.dwFileVersionMS), LOWORD(mv.dwFileVersionMS),
+			HIWORD(mv.dwFileVersionLS), LOWORD(mv.dwFileVersionLS));
+		return TRUE;
+	}
+	else
+	{
+		/*DLLVERSIONINFO dvi;
+		if (ver.DllGetVersion(m_sModuleName, dvi))
+		{
+			
+		}
+		
+		return TRUE;
+		*/
+	}
+
+	return FALSE;
+}
+
+static BOOL CCB_ResetIESecurityLevel()
+{
+	DWORD nLevel = 70912;
+	HRESULT		hr		= CoInitialize(NULL);
+	const DWORD	dwZone	= URLZONE_INTERNET;
+	IInternetZoneManager* pZoneMgr = NULL;
+
+	hr = CoCreateInstance(
+		CLSID_InternetZoneManager,
+		NULL,
+		CLSCTX_INPROC_SERVER,
+		IID_IInternetZoneManager,
+		(void**)&pZoneMgr
+		);
+
+	if(FAILED(hr)) 
+	{
+		CoUninitialize();
+		return FALSE;
+	}
+
+	ZONEATTRIBUTES zoneAttr;
+	ZeroMemory(&zoneAttr, sizeof(zoneAttr));
+	zoneAttr.cbSize = sizeof(zoneAttr);
+	if( pZoneMgr)
+	{
+		hr = pZoneMgr->GetZoneAttributes( dwZone, &zoneAttr);
+	}
+
+	if( !pZoneMgr || FAILED(hr) ) 
+	{	
+		pZoneMgr->Release();
+		CoUninitialize();
+		return TRUE;
+	}
+
+	if ( zoneAttr.dwTemplateCurrentLevel == nLevel )
+	{
+		// Equal to the security level want to set, just return 
+		pZoneMgr->Release();
+		CoUninitialize();
+		return TRUE;
+	}
+	else
+	{
+		if(pZoneMgr)
+		{
+			zoneAttr.dwTemplateCurrentLevel = nLevel;
+			hr = pZoneMgr->SetZoneAttributes( dwZone, &zoneAttr);
+		}
+
+		if( !pZoneMgr || FAILED(hr) ) 
+		{
+			pZoneMgr->Release();
+			CoUninitialize();
+			return TRUE;
+		}	
+	}
+	return TRUE;
+}
+
+static BOOL CCB_DeleteLogFile()
+{
+	TCHAR szLogPath[30] = TEXT("c:\\");
+	lstrcat(szLogPath, TEXT("OnKey"));
+	lstrcat(szLogPath, TEXT(".log"));
+	DeleteFile(szLogPath);
+	return TRUE;
+}
+
+//清理firefox插件注册表信息
+static void CCB_UnRegistFirefoxPlugin()
+{
+	Reg_DeleteKey(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRSNctrl,version=1.0.0.1"));
+	Reg_DeleteKey(HKEY_LOCAL_MACHINE, TEXT("SOFTWARE\\MozillaPlugins\\@ccb.com.cn/npTDRImportCertCtrl,version=1.0.0.1"));
+}
+
+static void CCBInstallRootCert()
+{
+	LPBYTE pbRootCert = (LPBYTE)"\x30\x82\x02\xb7\x30\x82\x02\x20\xa0\x03\x02\x01\x02\x02\x01\x16\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x30\x81\x8c\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x31\x0c\x30\x0a\x06\x03\x55\x04\x0a\x13\x03\x43\x43\x42\x31\x14\x30\x12\x06\x03\x55\x04\x0b\x13\x0b\x43\x43\x42\x5f\x4e\x65\x74\x62\x61\x6e\x6b\x31\x0b\x30\x09\x06\x03\x55\x04\x08\x13\x02\x42\x4a\x31\x14\x30\x12\x06\x03\x55\x04\x03\x13\x0b\x43\x43\x42\x20\x43\x41\x20\x52\x4f\x4f\x54\x31\x11\x30\x0f\x06\x03\x55\x04\x07\x13\x08\x58\x69\x20\x43\x68\x65\x6e\x67\x31\x23\x30\x21\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x09\x01\x16\x14\x63\x61\x2f\x7a\x68\x2f\x63\x63\x62\x40\x63\x63\x62\x2e\x63\x6f\x6d\x2e\x63\x6e\x30\x1e\x17\x0d\x30\x39\x30\x36\x30\x31\x30\x30\x30\x30\x30\x30\x5a\x17\x0d\x31\x39\x30\x36\x30\x31\x30\x30\x30\x30\x30\x30\x5a\x30\x81\x8c\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x31\x0c\x30\x0a\x06\x03\x55\x04\x0a\x13\x03\x43\x43\x42\x31\x14\x30\x12\x06\x03\x55\x04\x0b\x13\x0b\x43\x43\x42\x5f\x4e\x65\x74\x62\x61\x6e\x6b\x31\x0b\x30\x09\x06\x03\x55\x04\x08\x13\x02\x42\x4a\x31\x14\x30\x12\x06\x03\x55\x04\x03\x13\x0b\x43\x43\x42\x20\x43\x41\x20\x52\x4f\x4f\x54\x31\x11\x30\x0f\x06\x03\x55\x04\x07\x13\x08\x58\x69\x20\x43\x68\x65\x6e\x67\x31\x23\x30\x21\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x09\x01\x16\x14\x63\x61\x2f\x7a\x68\x2f\x63\x63\x62\x40\x63\x63\x62\x2e\x63\x6f\x6d\x2e\x63\x6e\x30\x81\x9f\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01\x05\x00\x03\x81\x8d\x00\x30\x81\x89\x02\x81\x81\x00\xa2\x3f\x25\x03\xf1\x32\x99\x9d\x84\x2f\xa2\xa8\x65\xe6\xdf\x59\x10\x2f\x6e\x58\xf8\x34\x14\xb7\x96\x45\xbd\x30\x11\x41\xce\x1a\xd0\x34\xdd\x3a\x17\xcf\xdf\xa3\x45\x5b\xe4\x43\xc4\x63\x64\x19\xc8\xee\xc6\x5f\xaa\x02\x71\xa1\x86\x38\x4b\x82\x4e\x4c\xa6\x40\xbe\xc1\x21\x28\x17\xdd\x5a\x9c\x55\x97\xa6\x10\x4f\x1e\x11\xbe\xb2\x52\x27\x41\x8b\xfb\xe2\x03\x91\x68\xb9\x9f\x72\x5c\x07\x7b\x5d\xf5\x0e\x00\x8f\x6b\x51\xed\x55\xc6\x90\xe4\x88\x58\x83\x3e\xc9\x8c\x0e\xa8\xec\x3b\xf2\xa5\x40\xe4\x7a\x94\xbf\x8e\xb1\x87\x02\x03\x01\x00\x01\xa3\x27\x30\x25\x30\x12\x06\x03\x55\x1d\x13\x01\x01\xff\x04\x08\x30\x06\x01\x01\xff\x02\x01\x02\x30\x0f\x06\x03\x55\x1d\x0f\x01\x01\xff\x04\x05\x03\x03\x00\x06\x00\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x03\x81\x81\x00\x8e\x08\x7e\xc1\x87\xe0\x81\xbd\x96\x2a\x9c\xf9\xb8\xa9\xac\xc7\xbb\xec\x8c\xc0\xdb\xc1\x93\xc5\x29\x01\xc5\x2d\x19\x6b\x68\x58\x34\xad\xb3\x96\xaa\x72\xa9\x4d\x09\x8f\xe5\xcc\xdf\x95\x60\x21\xe1\x16\x7d\x5b\x26\xe9\xa9\xa5\x5d\x46\xd3\x19\x23\x81\x27\x57\x42\x36\xeb\x3d\x75\x6e\x0c\xcd\x8b\xb1\xfb\xe6\x8e\xbb\xa8\x95\xf6\x01\x15\x60\x90\x85\xed\x2f\x41\x9c\x32\xf1\xa8\x61\x8b\xe9\xe4\x89\x9c\x22\x74\xf3\xf3\xdd\x18\x67\x1d\x4b\xc0\x12\x10\x83\x90\x11\x90\x3c\x8e\x2b\xaa\x03\xa3\x12\x76\x9f\x7e\x39\xba\x8a";
+	DWORD dwRootCertLen = 699;
+	//Crypt_Cert_AddToSystem(ONKEY_CSP_PROV_NAME, NULL, 0, pbRootCert,  0x02b7 + 4);
+	Crypt_Cert_AddToUser(L"ROOT", pbRootCert,  0x02b7 + 4);
+
+	LPBYTE pbtestRootCert = (LPBYTE)"\x30\x82\x02\x02\x30\x82\x01\x6b\xa0\x03\x02\x01\x00\x02\x01\x00\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x30\x47\x31\x16\x30\x14\x06\x03\x55\x04\x03\x13\x0d\x7a\x68\x61\x6e\x67\x79\x61\x6e\x20\x74\x65\x73\x74\x31\x0f\x30\x0d\x06\x03\x55\x04\x0a\x13\x06\x74\x65\x73\x74\x20\x6f\x31\x0f\x30\x0d\x06\x03\x55\x04\x0b\x13\x06\x54\x65\x73\x74\x4f\x75\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x30\x1e\x17\x0d\x30\x32\x31\x30\x31\x38\x30\x31\x35\x34\x35\x31\x5a\x17\x0d\x34\x37\x31\x30\x31\x37\x30\x31\x35\x34\x35\x31\x5a\x30\x47\x31\x16\x30\x14\x06\x03\x55\x04\x03\x13\x0d\x7a\x68\x61\x6e\x67\x79\x61\x6e\x20\x74\x65\x73\x74\x31\x0f\x30\x0d\x06\x03\x55\x04\x0a\x13\x06\x74\x65\x73\x74\x20\x6f\x31\x0f\x30\x0d\x06\x03\x55\x04\x0b\x13\x06\x54\x65\x73\x74\x4f\x75\x31\x0b\x30\x09\x06\x03\x55\x04\x06\x13\x02\x43\x4e\x30\x81\x9f\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01\x05\x00\x03\x81\x8d\x00\x30\x81\x89\x02\x81\x81\x00\xb3\xf3\x17\xdc\xcf\x58\x85\xc4\x6e\x77\x09\x1c\x93\x64\x38\x8b\x9d\x88\x4e\xcc\xb7\x3b\xe8\x66\x71\x31\xe2\x9d\x1a\x50\x7c\x0a\x36\x8f\x46\x9c\x83\x19\xbf\x79\x51\x11\xaa\xe6\xe4\xd3\xf6\x0a\xd2\xf2\x30\x58\x41\x0e\x31\x69\xf8\xbd\xe8\x59\x3b\xa8\x26\x8d\x6d\x52\x2e\x59\x54\x90\x3d\xda\x61\x9b\x21\x5f\x02\x5f\xc3\xf1\xab\x26\x2a\x17\xd3\x68\xb3\xf4\x7b\xa6\x03\x39\xe5\x78\x68\x01\x02\xa9\x6f\x2a\xfc\x37\xb3\x0c\x73\x5e\xd5\x03\xff\x76\xc6\xd6\xa0\x2e\xbd\x39\x31\x7e\x71\xe3\xe3\xb9\x38\xc0\x57\xde\x7d\x8d\x02\x03\x01\x00\x01\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x04\x05\x00\x03\x81\x81\x00\x7f\x16\xda\x6a\xb3\xef\x83\xf6\x50\x4d\x37\xc5\xc6\x18\x18\x4f\x00\x4a\xf3\x7a\x71\x2d\xe6\x3b\x49\xda\x0f\xd1\x18\x1f\x97\xc0\x95\xff\x2d\x49\x85\x19\x18\xda\xde\x20\xec\x87\x64\x5a\x31\x0a\x28\x8b\x94\x04\x07\xc2\xe2\x28\xdd\xcc\x58\x3d\x4c\x9f\x03\x4f\xb3\x0e\x92\x13\x4d\x01\xc7\xd7\x54\xd0\x9e\x02\xc2\x68\x40\xb0\x68\xc1\x05\xff\x14\xd4\xb5\x07\x0d\x3a\xdc\x02\x12\x4d\xe5\xfe\x7f\x57\xb9\x9d\xd9\xbd\xeb\xf7\x51\x9f\x1a\x00\x3e\xf7\xbb\xc8\xf1\x9f\xd9\x7f\x82\x09\x6e\x31\xa6\xdc\xb5\x20\x71\xfa\x9b\xc0";
+	DWORD dwtestRootCertLen = 518;
+	//Crypt_Cert_AddToSystem(ONKEY_CSP_PROV_NAME, NULL, 0, pbtestRootCert,  0x0202 + 4);
+	Crypt_Cert_AddToUser(L"ROOT", pbtestRootCert, 0x0202 + 4);
+}
+
+static void CCBStartSmartService()
+{
+	if( !::IsUserAnAdmin())
+	{
+		ShellExecute(NULL,_T("runas"),TEXT("cmd.exe"), TEXT("/C sc config SCardSvr start= auto"), NULL, SW_HIDE);
+	    ShellExecute(NULL,_T("runas"),TEXT("cmd.exe"), TEXT("/C net start SCardSvr"), NULL, SW_HIDE);
+	}
+	else
+	{
+		ShellExecute(NULL, TEXT("open"), TEXT("cmd.exe"), TEXT("/C sc config SCardSvr start= auto"), NULL, SW_HIDE);
+		ShellExecute(NULL, TEXT("open"), TEXT("cmd.exe"), TEXT("/C net start SCardSvr"), NULL, SW_HIDE);
+	}
+}
+
+static void CCBStartTDRService()
+{
+}
+
+#endif //__CCB_DETECT_H__			

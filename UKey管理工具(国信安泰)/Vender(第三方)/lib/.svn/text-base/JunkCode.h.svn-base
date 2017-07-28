@@ -1,0 +1,163 @@
+#ifndef _JUNK_H
+#define _JUNK_H
+#ifndef USE_JUNK_CODE
+ #define JUNK_CODE_JZ(xxx)
+ #define JUNK_CODE_JNB(xxx) 
+ #define JUNK_CODE_JMP1(xxx)
+ #define JUNK_CODE_JMP5(xx1,xx2,xx3,xx4,xx5)
+ #define JUNK_CODE_JMP4(xx1,xx2,xx3,xx4)
+ #define JUNK_CODE_STRONG1(xxx)
+ #define JUNK_CODE_FILL1(xxx)
+#else
+ #define JUNK_CODE_JZ(xxx) __asm jz $+13 __asm jnz $+7 __asm _emit xxx
+ #define JUNK_CODE_JNB(xxx) __asm clc __asm jnb $+8 __asm _emit xxx __asm _emit xxx
+ #define JUNK_CODE_JMP1(xxx) __asm jl $+12 __asm jmp $+6 __asm _emit xxx
+ 
+ #define JUNK_CODE_JMP5(xx1,xx2,xx3,xx4,xx5) \
+    __asm call $+12  \
+    __asm _emit xx1  \
+    __asm jmp $+27  \
+    __asm _emit xx2  \
+    __asm pop eax   \
+    __asm jmp near $+8 \
+    __asm _emit xx1  \
+    __asm _emit xx2  \
+    __asm _emit xx3  \
+    __asm inc eax   \
+    __asm jmp near $+8 \
+    __asm _emit xx4  \
+    __asm _emit xx5  \
+    __asm _emit xx2  \
+    __asm jmp eax   \
+    __asm _emit xx1
+ 
+ #define JUNK_CODE_JMP4(xx1,xx2,xx3,xx4) \
+  __asm call $+12   \
+  __asm _emit xx1   \
+  __asm _emit xx2   \
+  __asm jmp  $+25   \
+  __asm pop  eax   \
+  __asm jmp  near $+7  \
+  __asm _emit xx2   \
+  __asm _emit xx4   \
+  __asm add  eax,2  \
+  __asm jmp  near $+6  \
+  __asm _emit xx3   \
+  __asm push eax   \
+  __asm ret    \
+  __asm _emit xx4
+ 
+ //Õª×Ôhttp://www.pediy.com/bbshtml/BBS5/pediy50472.htm
+ #define JUNK_CODE_STRONG1(xxx)  \
+    __asm _emit 0x78 \
+    __asm _emit 0x0D \
+    __asm _emit 0x87 \
+    __asm _emit 0xED \
+    __asm _emit 0x77 \
+    __asm _emit 0x04 \
+    __asm _emit 0x87 \
+    __asm _emit 0xDB \
+    __asm _emit 0x74 \
+    __asm _emit 0x00 \
+    __asm _emit 0x70 \
+    __asm _emit 0x08 \
+    __asm _emit 0x90 \
+    __asm _emit 0x71 \
+    __asm _emit 0x05 \
+    __asm _emit 0x77 \
+    __asm _emit 0x00 \
+    __asm _emit 0xEB \
+    __asm _emit 0xEF \
+    __asm _emit 0x86 \
+    __asm _emit 0xEB \
+    __asm _emit 0x07 \
+    __asm _emit 0x8B \
+    __asm _emit 0xDB \
+    __asm _emit 0x70 \
+    __asm _emit 0x06 \
+    __asm _emit 0x90 \
+    __asm _emit 0x71 \
+    __asm _emit 0x03 \
+    __asm _emit 0xEB \
+    __asm _emit 0xF7 \
+    __asm _emit 0xD8
+ 
+ #define JUNK_CODE_FILL1(xxx) \
+    __asm _emit 0x5B ^ xxx \
+    __asm _emit 0x40 ^ xxx \
+    __asm _emit 0x00 ^ xxx \
+    __asm _emit 0xE4 ^ xxx \
+    __asm _emit 0x7F ^ xxx \
+    __asm _emit 0xC6 ^ xxx \
+    __asm _emit 0xD9 ^ xxx \
+    __asm _emit 0x5B ^ xxx \
+    __asm _emit 0x5B ^ xxx \
+    __asm _emit 0xB6 ^ xxx \
+    __asm _emit 0xC3 ^ xxx \
+    __asm _emit 0xB6 ^ xxx \
+    __asm _emit 0x3E ^ xxx \
+    __asm _emit 0x71 ^ xxx \
+    __asm _emit 0xA6 ^ xxx \
+    __asm _emit 0x0E ^ xxx \
+    __asm _emit 0x6D ^ xxx \
+    __asm _emit 0x78 ^ xxx \
+    __asm _emit 0x12 ^ xxx \
+    __asm _emit 0x85 ^ xxx \
+    __asm _emit 0x18 ^ xxx \
+    __asm _emit 0x8C ^ xxx \
+    __asm _emit 0xD4 ^ xxx \
+    __asm _emit 0x84 ^ xxx \
+    __asm _emit 0x8D ^ xxx \
+    __asm _emit 0x14 ^ xxx \
+    __asm _emit 0xC7 ^ xxx \
+    __asm _emit 0x47 ^ xxx \
+    __asm _emit 0xAC ^ xxx \
+    __asm _emit 0xC0 ^ xxx \
+    __asm _emit 0xED ^ xxx \
+    __asm _emit 0x9C ^ xxx \
+    __asm _emit 0x9B ^ xxx \
+    __asm _emit 0x6C ^ xxx \
+    __asm _emit 0xBE ^ xxx \
+    __asm _emit 0xE7 ^ xxx \
+    __asm _emit 0xBB ^ xxx \
+    __asm _emit 0x47 ^ xxx \
+    __asm _emit 0xC0 ^ xxx \
+    __asm _emit 0x6A ^ xxx \
+    __asm _emit 0xDA ^ xxx \
+    __asm _emit 0x34 ^ xxx \
+    __asm _emit 0x58 ^ xxx \
+    __asm _emit 0xC3 ^ xxx \
+    __asm _emit 0xAA ^ xxx \
+    __asm _emit 0x70 ^ xxx \
+    __asm _emit 0xE0 ^ xxx \
+    __asm _emit 0xB6 ^ xxx \
+    __asm _emit 0x71 ^ xxx \
+    __asm _emit 0x75 ^ xxx \
+    __asm _emit 0xF9 ^ xxx \
+    __asm _emit 0x2D ^ xxx \
+    __asm _emit 0x03 ^ xxx \
+    __asm _emit 0x1F ^ xxx \
+    __asm _emit 0x23 ^ xxx \
+    __asm _emit 0x7D ^ xxx \
+    __asm _emit 0xEE ^ xxx \
+    __asm _emit 0x0E ^ xxx \
+    __asm _emit 0x8B ^ xxx \
+    __asm _emit 0xEB ^ xxx \
+    __asm _emit 0xF4 ^ xxx \
+    __asm _emit 0x4B ^ xxx \
+    __asm _emit 0x23 ^ xxx \
+    __asm _emit 0x6F ^ xxx 
+#endif
+/*
+#define USE_JUNK_CODE
+#include "macro.h"
+BOOL Justify()
+{
+	JUNK_CODE_JMP5(0xb1, 0xf4, 0xf2, 0xd5, 0xdb);
+	int n = 0;
+	printf("sssss%d", n1);
+	JUNK_CODE_JMP5(0xa5, 0xa3, 0xf3, 0x8a, 0xce);
+	return 1;
+}
+*/
+#endif

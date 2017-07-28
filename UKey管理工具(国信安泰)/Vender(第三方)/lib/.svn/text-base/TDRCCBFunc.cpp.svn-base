@@ -1,0 +1,1573 @@
+#include "StdAfx.h"
+#include ".\tdrccbfunc.h"
+
+#include "firefoxProc.h"
+
+CTDRCCBFunc::CTDRCCBFunc(void)
+{
+}
+
+CTDRCCBFunc::~CTDRCCBFunc(void)
+{
+}
+
+HMODULE ghModule = NULL;
+
+// 初始化Token
+DWORD _initToken(ULONG slotID, PS_DEV_INITINFO pInit)
+{
+	if(NULL == ghModule)
+	{
+		ghModule = LoadLibrary(ONKEY_TOKEN_DLLNAME);
+	}
+	if(ghModule)
+	{
+		pfnOnKeyT_InitToken fnInitToken = (pfnOnKeyT_InitToken)::GetProcAddress(ghModule, "OnKeyT_InitToken" );
+		if(fnInitToken)
+		{
+			return (fnInitToken)(slotID, pInit);
+		}
+		return ONKEY_ERR_FAIL;
+	}
+	return ONKEY_ERR_FAIL;
+}
+
+// 选择Slot ID
+DWORD _selectSlot( IN  DWORD dwFlags, IN  LPVOID pfnShowDialog, OUT LPDWORD pSlotID)
+{
+	if(NULL == ghModule)
+	{
+		ghModule = LoadLibrary(ONKEY_TOKEN_DLLNAME);
+	}
+	if(ghModule)
+	{
+		pfnOnKeyT_Ex_SelectSlot fnSelectSlot = (pfnOnKeyT_Ex_SelectSlot)::GetProcAddress(ghModule, "OnKeyT_Ex_SelectSlot" );
+		if(fnSelectSlot)
+		{
+			return (fnSelectSlot)(dwFlags, pfnShowDialog, pSlotID);
+		}
+		return ONKEY_ERR_FAIL;
+	}
+	return ONKEY_ERR_FAIL;
+}
+
+// 修改密码
+DWORD _changPin(ULONG slotID, ULONG dwType, LPBYTE pbOldPin, ULONG dwOldPinLen, LPBYTE pbNewPin, ULONG dwNewPinLen)
+{
+	if(NULL == ghModule)
+	{
+		ghModule = LoadLibrary(ONKEY_TOKEN_DLLNAME);
+	}
+	if(ghModule)
+	{
+		pfnOnKeyT_ChangePin fnChangePin = (pfnOnKeyT_ChangePin)::GetProcAddress(ghModule, "OnKeyT_ChangePin" );
+		if(fnChangePin)
+		{
+			return (fnChangePin)(slotID, dwType, pbOldPin, dwOldPinLen, pbNewPin, dwNewPinLen);
+		}
+		return ONKEY_ERR_FAIL;
+	}
+	return ONKEY_ERR_FAIL;
+}
+
+void _initTokenLib()
+{
+	if(NULL == ghModule)
+	{
+		ghModule = LoadLibrary(ONKEY_TOKEN_DLLNAME);
+	}
+	if(ghModule)
+	{
+		pfnOnKeyT_ContextInit fnOnKeyT_ContextInit = (pfnOnKeyT_ContextInit)::GetProcAddress(ghModule, "OnKeyT_ContextInit" );
+		if(fnOnKeyT_ContextInit)
+		{
+			fnOnKeyT_ContextInit();
+		}
+	}
+}
+
+void _finalTokenLib()
+{
+	if(NULL == ghModule)
+	{
+		ghModule = LoadLibrary(ONKEY_TOKEN_DLLNAME);
+	}
+	if(ghModule)
+	{
+		pfnOnKeyT_ContextFinal fnOnKeyT_ContextFinal = (pfnOnKeyT_ContextFinal)::GetProcAddress(ghModule, "OnKeyT_ContextFinal" );
+		if(fnOnKeyT_ContextFinal)
+		{
+			fnOnKeyT_ContextFinal(FALSE);
+		}
+	}
+
+}
+
+//获取设备个数
+DWORD _getSlotList( BOOL bPresent, ULONG *pdwSlotList, ULONG *pwdCount) 
+{
+	if(NULL == ghModule)
+	{
+		ghModule = LoadLibrary(ONKEY_TOKEN_DLLNAME);
+	}
+	if(ghModule)
+	{
+		pfnOnKeyT_GetSlotList fnGetSlotList = (pfnOnKeyT_GetSlotList)::GetProcAddress(ghModule, "OnKeyT_GetSlotList" );
+		if(fnGetSlotList)
+		{
+			return (fnGetSlotList)(bPresent, pdwSlotList, pwdCount);
+		}
+		*pwdCount = 0;
+		return ONKEY_ERR_FAIL;
+	}
+
+	*pwdCount = 0;
+
+	return ONKEY_ERR_FAIL;
+}
+
+//------------------------------------------------------
+// 字节流到字符串的转换：  0x123456 -> "123456" , 即：0x123456 -> 0x313233343536
+//    pbHex    - 输出参数，字节流 
+//    dwHexLen - 输入参数，字节流长度
+//    pszAsc   - 输出参数，字符串， 默认该缓存区足够用，该函数只适合内部调用
+//------------------------------------------------------
+void _HexToStr(LPBYTE pbHex, DWORD dwHexLen, LPOLESTR pszAsc)
+{
+	for(DWORD i=0; i<(dwHexLen<<1); i++) 
+	{
+		pszAsc[i] = (i&0x01)? ((pbHex[i>>1])&0x0F) : ((pbHex[i>>1])>>4);
+		pszAsc[i] += (pszAsc[i] > 9)? ('A'-10) : '0';
+	}
+	//pszAsc[i] = '\0';
+}
+
+//------------------------------------------------------
+// 字符串到字节流的转换： "123456" -> 0x123456, 即：0x313233343536 -> 0x123456
+// 参数：
+//    pszAsc   - 输入参数，字符串
+//    dwAscLen - 输入参数，字符串长度
+//    pbHex    - 输出参数，字节流， 默认该缓存区足够用，该函数只适合内部调用
+//------------------------------------------------------
+DWORD _StrToHex(LPOLESTR pszAsc, DWORD dwAscLen, LPBYTE pbHex)
+{
+	for (DWORD i=0; i<dwAscLen; i++ )
+	{
+		BYTE c = (BYTE)pszAsc[i];
+		if (c>='0' && c<='9')
+			c = c-'0';
+		else // A-F,a-f
+			c = (c&0x0F) + 9;
+		if (i&0x01) // 1
+		{
+			*pbHex += c;
+			pbHex ++;
+		}
+		else // 0
+		{
+			*pbHex = c<<4;
+		}
+	}
+	return (dwAscLen >> 1);
+}
+//------------------------------------------------------
+
+
+//------------------------------------------------------
+// 把 整数 转化成 二进制字节流
+// 参数：
+//   dwValue     - 输入参数，整数
+//   pbData      - 输出参数，字节流
+//   dwByteCount - 输入参数，要转成的字节流的个数
+//------------------------------------------------------
+void IntToBinary( IN DWORD dwValue, IN DWORD dwByteCount, OUT LPBYTE pbData)
+{
+	for(DWORD i=0; i<dwByteCount; i++)
+	{
+		pbData[i] = (BYTE)( ( dwValue>>((dwByteCount-i-1)*8) ) & 0xFF );
+	}
+}
+
+// 获取设备信息，包括SN
+DWORD _getDevInfo(ULONG slotID, ULONG dwFlags, PS_DEV_CONFIG pInfo) 
+{
+	if(NULL == ghModule)
+	{
+		ghModule = LoadLibrary(ONKEY_TOKEN_DLLNAME);
+	}
+	if(ghModule)
+	{
+		pfnOnKeyT_GetDeviceInfo fnGetDevInfo = (pfnOnKeyT_GetDeviceInfo)::GetProcAddress(ghModule, "OnKeyT_GetDeviceInfo" );
+		if(fnGetDevInfo)
+		{
+			return (fnGetDevInfo)(slotID, dwFlags, pInfo);
+		}
+		return ONKEY_ERR_FAIL;
+	}
+	return ONKEY_ERR_FAIL;
+}
+
+#ifdef CCB_MAKE_CERT_P10
+
+// 打包PKCS10
+int CTDRCCBFunc::MakePKCS10(DWORD dwSlotID, char* psDevSN, char *psBase64CertRequest, int *nBase64CertRequest)
+{
+	int nRet = CCB_ERR_SUCCESS;
+
+	const DWORD dwModBits = 1024;
+
+	unsigned char *pbBase64P10 = NULL;
+	unsigned long dwBase64P10len = 0;
+
+	PKCS10Request pkcs10(1);
+
+	pkcs10.AddObjectIdAndValue("C",	"CN");
+	pkcs10.AddObjectIdAndValue("O",	"CCB");
+	pkcs10.AddObjectIdAndValue("OU", "CCB_Netbank");
+	pkcs10.AddObjectIdAndValue("CN",(CHAR*)psDevSN);
+	
+	pkcs10.SetAlgId( MD5_RSA );
+
+	if( NULL == pkcs10.CreatePKCS10Req( ONKEY_CSP_PROV_NAME, dwModBits, NULL, dwSlotID) )
+	{
+		DWORD dwLastError = GetLastError();
+		
+		switch(dwLastError)
+		{
+		case SCARD_W_CANCELLED_BY_USER: // 用户取消密码输入错误代码
+			nRet = CCB_ERR_P10_FAILED_CANCEL_VERIFY_PIN;
+			break;
+
+		case SCARD_W_WRONG_CHV:         // 密码错误
+			nRet = CCB_ERR_P10_FAILED_INVALID_PIN;
+			break;
+
+		case SCARD_W_CHV_BLOCKED:
+			nRet = CCB_ERR_KEY_LOCKED;
+			break;
+		default:
+			nRet = CCB_ERR_P10_FAILED_OTHER_ERROR;
+			break;
+		}
+
+		pkcs10.ClearPKCS10Req();
+
+		return nRet;
+	}
+
+	pkcs10.GetPemEncodePKCS10Req(&pbBase64P10, &dwBase64P10len);	
+
+	memcpy(psBase64CertRequest, pbBase64P10, dwBase64P10len);
+	*nBase64CertRequest = dwBase64P10len;
+
+	pkcs10.ClearPKCS10Req();
+
+	return CCB_ERR_SUCCESS;
+}
+
+#endif // CCB_MAKE_CERT_P10
+
+
+// 获取设备中的证书数据
+bool CTDRCCBFunc::GetDeviceCertData(char* sCtnName, LPBYTE pbCertData, LPDWORD pdwCertDataLen)
+{
+	bool bRet = false;
+
+	BYTE baCertData[MAX_DATA_LEN];
+	DWORD dwCertLen = MAX_DATA_LEN;
+
+	// 获取证书数据
+	if (Crypt_GetCertData(sCtnName, 1, baCertData, &dwCertLen) == 0) // 取证书成功，则退出，建行一个Key中就一份证书
+	{
+		memcpy(pbCertData, baCertData, dwCertLen);
+		*pdwCertDataLen = dwCertLen;
+		bRet = true;
+	}
+
+	if(!bRet)
+	{
+		dwCertLen = MAX_DATA_LEN;
+		if (Crypt_GetCertData(sCtnName, 2, baCertData, &dwCertLen) == 0) // 取证书成功，则退出，建行一个Key中就一份证书
+		{
+			memcpy(pbCertData, baCertData, dwCertLen);
+			*pdwCertDataLen = dwCertLen;
+			bRet = true;
+		}
+	}
+
+	return bRet;
+}
+
+//
+// 获取天地融CSP注册的证书属性
+// 
+int CTDRCCBFunc::GetSysCertProperty(stCertProperty * lpstCertProp) 
+{
+	CHAR sCertCtnName[256] = {0};
+	return GetSysCertInfo(sCertCtnName, NULL, lpstCertProp);
+}
+
+//
+// 获取天地融CSP注册的证书容器名
+// 
+int CTDRCCBFunc::GetSysCertCtnName(char *sCertCtnName, LPBYTE pbCertData, LPDWORD pdwCertDataLen)
+{
+	return GetSysCertInfo(sCertCtnName, NULL, NULL, pbCertData, pdwCertDataLen);
+}
+
+int CTDRCCBFunc::GetSysCertData(char *sCertCtnName, PCCERT_CONTEXT*pCertCtn)
+{
+	return GetSysCertInfo(sCertCtnName, pCertCtn);
+}
+
+// 
+// 获取天地融CSP注册的证书的信息 - 容器名和证书属性
+// 
+int CTDRCCBFunc::GetSysCertInfo(char *sCertCtnName, PCCERT_CONTEXT*ppRetCertCtn, stCertProperty* lpstCertProp, 
+								LPBYTE pbCertData, LPDWORD pdwDataLen)
+{ 
+#define MAX_CERT_COUNT	0x200
+
+	HCERTSTORE hStore = NULL;
+	PCCERT_CONTEXT pstCertCtx = NULL;
+	PCCERT_CONTEXT pstCertCtxDup = NULL; 
+	PCRYPT_KEY_PROV_INFO pstKeyProvInfo = NULL;
+
+	WCHAR szProvNameW[256] = {0};
+	BYTE baKeyProvInfoBuff[2048] = {0};
+	DWORD dwBufSize = sizeof(baKeyProvInfoBuff);
+
+	DWORD dwCertCount = 0;
+	DWORD dwCertNameLen = 0;
+	int nCertInfoInex = -1;
+
+	LPWSTR pwsSelectedCertCtn = NULL;
+
+	LPWSTR ppwsCtnNameArray[MAX_CERT_COUNT] = {0};  // 最多0x200份证书
+	LPWSTR ppwsCertNameArray[MAX_CERT_COUNT] = {0}; // 最多0x200份证书
+
+	stCertProperty stCertPropArray[MAX_CERT_COUNT];
+
+	COnKeyDialog dlg(ONKEY_PINPAD_DLLNAME);
+
+	hStore = CertOpenSystemStore( NULL, TEXT("MY") );
+
+	int nRet = CCB_ERR_SUCCESS;
+
+	DWORD dwSlotID = 0;
+	TCHAR szRegCtnName[MAX_PATH] = {0};
+
+	bool bIsFindCert = false;
+
+	if(CCB_ERR_SUCCESS != CTDRCCBFunc::GetDeviceSlotID(dwSlotID) )
+	{
+		return CCB_ERR_NO_KEY_CONNECTED;
+	}
+	::wsprintf(szRegCtnName, TEXT(CRYPT_TENDYRON_ONKEYTOKEN_D1), dwSlotID-1);
+
+	if (!hStore)
+	{
+		CertCloseStore( hStore, 0 );
+		return CCB_ERR_PERSONAL_CERT_UNAVAILABLE;
+	}
+
+	pstKeyProvInfo = (PCRYPT_KEY_PROV_INFO)baKeyProvInfoBuff;
+
+	MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, ONKEY_CSP_PROV_NAME, -1, szProvNameW, 256);  //
+
+	while (pstCertCtx = CertEnumCertificatesInStore(hStore, pstCertCtx))
+	{
+		dwBufSize = sizeof(baKeyProvInfoBuff);
+		memset(pstKeyProvInfo, 0, dwBufSize);
+
+		if(!CertGetCertificateContextProperty(pstCertCtx, CERT_KEY_PROV_INFO_PROP_ID, pstKeyProvInfo, &dwBufSize))
+		{
+			continue;
+		}
+
+		if(lstrcmpW(pstKeyProvInfo->pwszProvName, szProvNameW) != 0) // 不是我们CSP注册的
+		{
+			continue;
+		}
+
+		if(dwCertCount >= MAX_CERT_COUNT) // 我们就处理512份证书
+		{
+			break;
+		}
+
+		ppwsCtnNameArray[dwCertCount] = new WCHAR[lstrlenW(pstKeyProvInfo->pwszContainerName)+2];
+		lstrcpyW(ppwsCtnNameArray[dwCertCount], pstKeyProvInfo->pwszContainerName);
+
+		if( 0 == memcmp(pstKeyProvInfo->pwszContainerName, szRegCtnName, lstrlenW(szRegCtnName)*sizeof(WCHAR) ) )
+		{
+			//第一个Key的注册的容器名
+			bIsFindCert = true;
+		}
+
+		dwCertNameLen = CertGetNameStringW(pstCertCtx, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL, NULL, 0);
+		
+		if(dwCertNameLen > 0)
+		{
+			ppwsCertNameArray[dwCertCount] = new WCHAR[dwCertNameLen+2];
+			CertGetNameStringW(pstCertCtx, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, NULL, ppwsCertNameArray[dwCertCount], dwCertNameLen);
+			
+			if(pbCertData && pdwDataLen)
+			{
+				dwCertCount++;
+
+				if(*pdwDataLen > pstCertCtx->cbCertEncoded)
+				{
+					memcpy(pbCertData, pstCertCtx->pbCertEncoded, pstCertCtx->cbCertEncoded);
+				}
+
+				*pdwDataLen = pstCertCtx->cbCertEncoded;
+				break;
+			}	
+		}
+		else // 如果找不到证书CN, 则使用容器名称
+		{
+			ppwsCertNameArray[dwCertCount] = new WCHAR[lstrlenW(pstKeyProvInfo->pwszContainerName)+2];
+			lstrcpyW(ppwsCtnNameArray[dwCertCount], pstKeyProvInfo->pwszContainerName);
+		}
+
+		if(lpstCertProp)
+		{
+			ParseCertProperty(pstCertCtx, stCertPropArray[dwCertCount]);
+		}
+
+		dwCertCount++;
+
+		if(bIsFindCert)
+		{
+			break;
+		}
+
+		if(pstCertCtxDup = CertDuplicateCertificateContext(pstCertCtx))
+		{
+			if(CertFreeCertificateContext(pstCertCtxDup))
+			{
+				pstCertCtxDup = NULL;
+			}
+		}
+	}
+
+	if(ppRetCertCtn && bIsFindCert)
+	{
+		*ppRetCertCtn = pstCertCtx;
+	}
+	else if(pstCertCtx)//需要返回Ctn时，不能释放该句柄
+	{
+		CertFreeCertificateContext(pstCertCtx);	
+	}
+
+	if(pstCertCtxDup) 
+	{
+		CertFreeCertificateContext(pstCertCtxDup);	
+	}
+
+	if(hStore && NULL == ppRetCertCtn)
+	{
+		CertCloseStore( hStore, 0 ); // 外部没有释放该句柄
+	}
+
+	if(0 == dwCertCount)
+	{
+		pwsSelectedCertCtn = NULL;
+		nCertInfoInex = -1; 
+	}
+	else if(1 == dwCertCount)
+	{
+		pwsSelectedCertCtn = ppwsCtnNameArray[0];
+		nCertInfoInex = 0;
+	}
+	else //(dwCertCount > 1)
+	{
+		ST_SELECTCERT stSelectCert;
+		stSelectCert.dwItemCount = dwCertCount;
+		stSelectCert.ppCertNames = ppwsCertNameArray;
+
+		stSelectCert.dwSelectType = 1; // 选择证书，不是覆盖证书选择
+
+		if( ONKEY_PINPAD_SUCCESS != dlg.ShowDialog(COnKeyDialog::typeSelectCert, &stSelectCert) )
+		{
+			pwsSelectedCertCtn = NULL;
+			nCertInfoInex = -1; 
+		}
+		else
+		{
+			pwsSelectedCertCtn = ppwsCtnNameArray[stSelectCert.dwSelectResult];
+			nCertInfoInex = stSelectCert.dwSelectResult; 
+		}
+	}
+
+	if( NULL == pwsSelectedCertCtn )
+	{
+		nRet = CCB_ERR_PERSONAL_CERT_UNAVAILABLE;
+	}
+	else
+	{
+		WideCharToMultiByte(CP_ACP, 0, pwsSelectedCertCtn, lstrlenW(pwsSelectedCertCtn), sCertCtnName, 512, NULL, NULL);
+		nRet = CCB_ERR_SUCCESS;
+	}
+
+	if(lpstCertProp && (nCertInfoInex >= 0))
+	{
+		memcpy(&lpstCertProp->stEndTime, &stCertPropArray[nCertInfoInex].stEndTime, sizeof(SYSTEMTIME));
+		memcpy(&lpstCertProp->stStartTime, &stCertPropArray[nCertInfoInex].stStartTime, sizeof(SYSTEMTIME));
+
+		lpstCertProp->dwCertSN = stCertPropArray[nCertInfoInex].dwCertSN;
+		lpstCertProp->dwCertStatus = stCertPropArray[nCertInfoInex].dwCertStatus;
+
+		lpstCertProp->strCert_C = stCertPropArray[nCertInfoInex].strCert_C;
+		lpstCertProp->strCert_CN = stCertPropArray[nCertInfoInex].strCert_CN;
+		lpstCertProp->strCert_E = stCertPropArray[nCertInfoInex].strCert_E;
+		lpstCertProp->strCert_O = stCertPropArray[nCertInfoInex].strCert_O;
+		lpstCertProp->strCert_OU = stCertPropArray[nCertInfoInex].strCert_OU;
+		lpstCertProp->strCert_S = stCertPropArray[nCertInfoInex].strCert_S;
+
+		lpstCertProp->strIssuer = stCertPropArray[nCertInfoInex].strIssuer;
+		lpstCertProp->strOwner = stCertPropArray[nCertInfoInex].strOwner;
+		lpstCertProp->strSignAlg = stCertPropArray[nCertInfoInex].strSignAlg;
+		lpstCertProp->strSubject = stCertPropArray[nCertInfoInex].strSubject;
+		lpstCertProp->strVersion = stCertPropArray[nCertInfoInex].strVersion;
+
+		lpstCertProp->strX500Str = stCertPropArray[nCertInfoInex].strX500Str;
+
+	}
+
+	for(DWORD i=0; (i < dwCertCount); i++) // 释放所有的字符串
+	{
+		if(ppwsCtnNameArray[i])
+		{
+			delete [] ppwsCtnNameArray[i];
+		}
+		if(ppwsCertNameArray[i])
+		{
+			delete [] (ppwsCertNameArray[i]);
+		}
+	}
+
+	return nRet;
+}
+
+
+// Key是否插在电脑上
+bool CTDRCCBFunc::CCBDeviceIsExist()
+{
+	DWORD dwSlotListArr[ONKEY_MAX_TOKENCOUNT] = {0};
+	DWORD dwSlotCount = ONKEY_MAX_TOKENCOUNT;
+	_getSlotList(TRUE,dwSlotListArr,&dwSlotCount);
+	return (dwSlotCount > 0);
+}
+
+
+// 获取设备序列号
+int CTDRCCBFunc::GetDeviceSN(char *sDevSN, int *pnDevSNLen, DWORD dwSlotID)
+{
+	if(0 == dwSlotID)
+	{
+		int nRet = GetDeviceSlotID(dwSlotID);
+		if(CCB_ERR_SUCCESS != nRet)
+		{
+			return nRet;
+		}
+	}
+
+	S_DEV_CONFIG sTokenInfo = {0};
+
+	if( _getDevInfo(dwSlotID, 0, &sTokenInfo) != ONKEY_ERR_SUCCESS)
+	{
+		return CCB_ERR_GET_DEV_SN_FAILED;
+	}
+	
+	for(int i=0; i<sizeof(sTokenInfo.sCOSInfo.m_ShellNum); i++)
+	{
+		if( sTokenInfo.sCOSInfo.m_ShellNum[i] == 0x20 )
+		{
+			sTokenInfo.sCOSInfo.m_ShellNum[i] = 0x00;
+			break;
+		}
+	}
+
+	if(pnDevSNLen && sDevSN)
+	{
+		*pnDevSNLen = (int)lstrlenA((char*)sTokenInfo.sCOSInfo.m_ShellNum);
+		memcpy(sDevSN, sTokenInfo.sCOSInfo.m_ShellNum, *pnDevSNLen);
+
+		return CCB_ERR_SUCCESS;
+	}
+
+	return CCB_ERR_GET_DEV_SN_FAILED;
+
+}
+
+//
+// 个人证书是否注册
+// 
+bool CTDRCCBFunc::CertIsRegistered(DWORD dwCertSN)
+{
+	bool bRet = false;
+
+	PCCERT_CONTEXT pstCertCtx = NULL;
+	PCCERT_CONTEXT pstCertCtxDup = NULL; 
+
+	HCERTSTORE hStore = CertOpenSystemStore( NULL, TEXT("MY") );
+	if (!hStore)
+	{
+		CertCloseStore( hStore, 0 );
+		return false;
+	}
+
+	while ( pstCertCtx = CertEnumCertificatesInStore(hStore, pstCertCtx) )
+	{
+		if(pstCertCtx)
+		{
+			if(pstCertCtx->pCertInfo)
+			{
+				if( dwCertSN == *((LPDWORD)(pstCertCtx->pCertInfo->SerialNumber.pbData) ) )
+				{
+					bRet = true;
+					break;
+				}
+			}
+		}
+
+		if( pstCertCtxDup = CertDuplicateCertificateContext(pstCertCtx) )
+		{
+			if( CertFreeCertificateContext(pstCertCtxDup) )   
+			{
+				pstCertCtxDup = NULL;
+			}
+		}
+	}
+
+	if(pstCertCtx) 
+	{
+		CertFreeCertificateContext(pstCertCtx);	
+	}
+	if(pstCertCtxDup) 
+	{
+		CertFreeCertificateContext(pstCertCtxDup);	
+	}
+	if(hStore) 
+	{
+		CertCloseStore( hStore, 0 );
+	}
+
+	return bRet;
+}
+
+// 
+// 个人证书是否可用, 是否可用, 已过期, 注册等进行检测
+// 
+int CTDRCCBFunc::CertIsAvailable()
+{
+	int nRet = CCB_ERR_SUCCESS;
+	
+	// 获取证书属性
+	stCertProperty certProp;
+
+	if(CCB_ERR_SUCCESS != GetSysCertProperty(&certProp))
+	{
+		nRet = CCB_ERR_PERSONAL_CERT_UNAVAILABLE;
+	}
+	else
+	{
+		// ----------------------------------------------
+		// 显示证书属性
+		// ----------------------------------------------
+		int nItem = 0;
+
+		if( certProp.strSubject.GetLength() <= 0 )
+		{
+			nRet = CCB_ERR_PERSONAL_CERT_NOT_REG;
+			goto leave;
+		}
+
+		// Status(证书状态)
+		if(CERT_TRUST_IS_NOT_TIME_VALID == certProp.dwCertStatus)
+		{
+			nRet = CCB_ERR_PERSONAL_CERT_EXPIRE;
+			goto leave;
+		}
+
+		if (CERT_TRUST_NO_ERROR != certProp.dwCertStatus)
+		{
+			nRet = CCB_ERR_PERSONAL_CERT_UNAVAILABLE;
+			goto leave;
+		}
+
+		CString strRet ,strTemp;
+		// 获取当前的系统时间
+		SYSTEMTIME now;
+		GetLocalTime(&now);
+		unsigned int nBetweenDay = 0 ;
+		// 转换成文件时间
+		FILETIME ftStart, ftEnd, ftNow;
+		SystemTimeToFileTime(&certProp.stStartTime, &ftStart);
+		SystemTimeToFileTime(&certProp.stEndTime, &ftEnd);
+		SystemTimeToFileTime(&now, &ftNow);
+
+		// 比较当前时间是否位于起始时间和终止时间段内
+		if ( CompareFileTime(&ftStart, &ftNow) > 0 || CompareFileTime(&ftEnd, &ftNow) < 0 ) // 不在有效期内
+		{
+			nRet = CCB_ERR_PERSONAL_CERT_EXPIRE;
+			goto leave;
+		}
+	}
+
+leave:
+	return nRet;
+}
+
+// Key是否锁定
+int CTDRCCBFunc::DeviceIsLocked()
+{
+	DWORD dwSlotID = 0;
+	int nRet = GetDeviceSlotID(dwSlotID);
+
+	if(CCB_ERR_SUCCESS != nRet)
+	{
+		return nRet;
+	}
+
+	S_DEV_CONFIG sTokenInfo = {0};
+
+	if( _getDevInfo(dwSlotID, 0, &sTokenInfo) != ONKEY_ERR_SUCCESS)
+	{
+		return CCB_ERR_NO_KEY_CONNECTED;
+	}
+
+	if(sTokenInfo.sUserPinAttr.btMinTime == 0)
+	{
+		return CCB_ERR_KEY_LOCKED;
+	}
+	return CCB_ERR_SUCCESS;
+}
+
+
+// 修改网银盾密码
+int CTDRCCBFunc::ChangeDevicePin() 
+{
+	DWORD dwSlotID = 0, dwRet = 0;
+	int nRet = GetDeviceSlotID(dwSlotID);
+	if(CCB_ERR_SUCCESS != nRet)
+	{
+		return nRet;
+	}
+
+	S_DEV_CONFIG sTokenInfo = {0};
+	if( _getDevInfo(dwSlotID, 0, &sTokenInfo) != ONKEY_ERR_SUCCESS)
+	{
+		return CCB_ERR_NO_KEY_CONNECTED;
+	}
+
+#if(ONKEY_SUPPORT_VIRTUALDESTTOP_SOFTPAD) // 虚拟桌面 验证密码
+
+	HMODULE hDLLModule =  LoadLibrary( ONKEY_VD_DLLNAME );
+	if (NULL == hDLLModule)
+	{
+		return ONKEY_ERR_INVAILDPARAM;
+	}
+	lpfnvdInputPin vdInputPin = (lpfnvdInputPin)GetProcAddress(hDLLModule, "vdInputPin");
+	if (NULL == vdInputPin)
+	{
+		return ONKEY_ERR_INVAILDPARAM;
+	}
+
+	vdInputPinArg stArg;
+
+	//输入参数
+	stArg.pszPadDLLName = ONKEY_PINPAD_DLLNAME;//PINPAD动态库名称
+	stArg.hInstanceHandle = NULL;//实体句柄
+	stArg.btMaxPinLen = ONKEY_USE_PIN_MAX_LEN;//最大密码长度
+	stArg.btMinPinLen = ONKEY_USE_PIN_MIN_LEN;//最小密码长度
+	stArg.dwPadType = PAD_TYPE_BIG;//键盘类型
+	stArg.dwPadFlag = PAD_FLAG_INPUTALL;//键盘标示，输入PIN使用此标示
+	stArg.dwSlotID = dwSlotID;//
+	stArg.dwPinType = ONKEY_TYPE_USER;
+	stArg.pfnCallBackFunc = (LPVOID)_changPin;//扫描函数地址，输入
+	stArg.dwUseType = PAD_USE_TYPE_CHANGEPIN;//用作修改Pin
+	stArg.bIsDefaultPin = (sTokenInfo.sAppInfoRW.m_TokenInfo.flags & CKF_USER_PIN_TO_BE_CHANGED);
+	dwRet = vdInputPin(stArg);
+
+	if(NULL != hDLLModule)
+	{
+		FreeLibrary(hDLLModule);
+	}
+
+#else
+
+	COnKeyPinpad pinpad(ONKEY_PINPAD_DLLNAME);
+	pinpad.GetPadParam()->dwSlotID = dwSlotID;
+	pinpad.GetPadParam()->dwPinType = ONKEY_TYPE_USER;
+	
+	pinpad.GetPadParam()->btMinPinLen = ONKEY_USE_PIN_MIN_LEN; 
+	pinpad.GetPadParam()->btMaxPinLen = ONKEY_USE_PIN_MAX_LEN;
+
+	pinpad.GetPadParam()->dwFlags |= PAD_FLAG_INPUTALL;
+	pinpad.GetPadParam()->dwUseType = PAD_USE_TYPE_CHANGEPIN;
+	pinpad.GetPadParam()->bIsDefaultPin = (sTokenInfo.sAppInfoRW.m_TokenInfo.flags & CKF_USER_PIN_TO_BE_CHANGED);
+
+	dwRet = pinpad.Indicator(NULL, _changPin, PAD_TYPE_BIG);
+
+#endif
+
+	CString strFunOK = Res_GetProfileString(_T("STR_ID_CHANGEPIN"), ADD_PRON);
+	CStringW strUFunOK(strFunOK.GetBuffer(), strFunOK.GetLength());
+
+	CStringW strMsg;
+
+	ST_MSGBOX stMsgBox;
+	COnKeyDialog pad(ONKEY_PINPAD_DLLNAME);
+
+	stMsgBox.pszTitle = (LPCWSTR)strUFunOK;
+	if(0 == dwRet)
+	{
+		strMsg = strFunOK + _T(" ") + Res_GetProfileString(_T("STR_ID_SUCCESS"));
+
+		stMsgBox.pszMsg = (LPCWSTR)strMsg;
+		stMsgBox.bShowCancel = FALSE;
+		pad.ShowDialog(COnKeyDialog::typeMsgBox, &stMsgBox);
+		return CCB_ERR_SUCCESS;
+	}
+	else if(ONKEY_ERR_CANCEL != dwRet)
+	{
+		strMsg = strFunOK + _T(" ") + Res_GetProfileString(_T("STR_ID_FAIL"));
+		stMsgBox.pszMsg = (LPCWSTR)strMsg;
+		stMsgBox.bShowCancel = FALSE;
+		pad.ShowDialog(COnKeyDialog::typeMsgBox, &stMsgBox);
+		return CCB_ERR_CHANGE_PIN_CANCEL;
+	}
+	else if(ONKEY_ERR_PINLOCKED == dwRet)
+	{
+		return CCB_ERR_KEY_LOCKED;
+	}
+
+	return CCB_ERR_CHANGE_PIN_CANCEL;
+}
+
+// 显示个人证书
+int CTDRCCBFunc::ShowPersonalCert()  
+{
+	CHAR sCertCtnName[512] = {0};
+
+	BYTE pbCertData[MAX_DATA_LEN] = {0};
+	DWORD dwCertLen = MAX_DATA_LEN;
+
+	if(CCB_ERR_SUCCESS != GetSysCertCtnName(sCertCtnName, pbCertData, &dwCertLen) )
+	{
+		return CCB_ERR_PERSONAL_CERT_UNAVAILABLE;
+	}
+
+/*
+	if( !GetDeviceCertData(sCertCtnName, pbCertData, &dwCertLen) )
+	{
+		return CCB_ERR_SHOW_CERT_FAILED;
+	}
+*/
+
+	DWORD dwShowRet = Crypt_Cert_UIDlgView(::GetActiveWindow(), (LPCTSTR)Res_GetProfileString( TEXT("STR_ID_CERTIFICATE")), pbCertData, dwCertLen);
+
+	if( (ERROR_SUCCESS != dwShowRet) && (ERROR_CANCELLED != dwShowRet) )
+	{
+		return CCB_ERR_SHOW_CERT_FAILED;
+	}
+
+	return CCB_ERR_SUCCESS;
+}
+
+int CTDRCCBFunc::GetDeviceSlotID(DWORD &dwSlotID)
+{
+	DWORD dwSlotIDList[ONKEY_MAX_TOKENCOUNT] = {0};
+	DWORD dwCount = ONKEY_MAX_TOKENCOUNT;
+	
+	if(_getSlotList(TRUE, dwSlotIDList, &dwCount) != ONKEY_ERR_SUCCESS)
+	{
+		return CCB_ERR_NO_KEY_CONNECTED;
+	}
+	if(0 == dwCount)
+	{
+		return CCB_ERR_NO_KEY_CONNECTED;
+	}
+	if(1 == dwCount)
+	{
+		dwSlotID = dwSlotIDList[0];
+	}
+	if(dwCount > 1)
+	{
+#if( ONKEY_LOAD_ONE_KEY )
+		dwSlotID = Reg_GetProfileInt(HKEY_CURRENT_USER,ONKEY_INSIDE_REGPATH, ONKEY_CURRENT_REG_SLOT_ID , 0);
+		if(0 == dwSlotID) //Svr没有注册SlotID，则选择SlotID
+		{
+#endif
+			COnKeyDialog dlg(ONKEY_PINPAD_DLLNAME);
+			if(ONKEY_ERR_SUCCESS !=  _selectSlot(0, dlg.fnShowDialog, &dwSlotID ) )
+			{
+				return CCB_ERR_NO_KEY_CONNECTED;
+			}
+#if( ONKEY_LOAD_ONE_KEY )
+		}
+#endif
+	}
+	return CCB_ERR_SUCCESS;
+}
+
+// 初始化设备
+int CTDRCCBFunc::InitDevice()
+{
+	DWORD dwSlotID = 0, dwRet = 0;
+
+	int nRet = GetDeviceSlotID(dwSlotID);
+
+	if(CCB_ERR_SUCCESS != nRet)
+	{
+		return nRet;
+	}
+
+	//初始化不需要用户输入密码，死锁后，key作废。
+#if 0
+#if(ONKEY_SUPPORT_VIRTUALDESTTOP_SOFTPAD) // 虚拟桌面 验证密码
+
+	HMODULE hDLLModule =  LoadLibrary( ONKEY_VD_DLLNAME );
+	if (NULL == hDLLModule)
+	{
+		return ONKEY_ERR_INVAILDPARAM;
+	}
+	lpfnvdInputPin vdInputPin = (lpfnvdInputPin)GetProcAddress(hDLLModule, "vdInputPin");
+	if (NULL == vdInputPin)
+	{
+		return ONKEY_ERR_INVAILDPARAM;
+	}
+
+	vdInputPinArg stArg;
+
+	//输入参数
+	stArg.pszPadDLLName = ONKEY_PINPAD_DLLNAME;//PINPAD动态库名称
+	stArg.hInstanceHandle = NULL;//实体句柄
+	stArg.btMaxPinLen = ONKEY_USE_PIN_MAX_LEN;//最大密码长度
+	stArg.btMinPinLen = ONKEY_USE_PIN_MIN_LEN;//最小密码长度
+	stArg.dwPadType = PAD_TYPE_BIG;//键盘类型
+	stArg.dwPadFlag = PAD_FLAG_INPUTALL;//键盘标示，输入PIN使用此标示
+	stArg.dwSlotID = dwSlotID;//
+	stArg.dwPinType = ONKEY_TYPE_USER;
+	stArg.pfnCallBackFunc = (LPVOID)_initToken;//扫描函数地址，输入
+	stArg.dwUseType = PAD_USE_TYPE_INITDEV;//用作修改Pin
+	
+	dwRet = vdInputPin(stArg);
+
+	if(NULL != hDLLModule)
+	{
+		FreeLibrary(hDLLModule);
+	}
+
+#else
+
+	COnKeyPinpad pad(ONKEY_PINPAD_DLLNAME);
+	pad.GetPadParam()->dwSlotID = dwSlotID;
+	pad.GetPadParam()->btMinPinLen = 6;
+	pad.GetPadParam()->btMaxPinLen = 8;
+	pad.GetPadParam()->dwFlags |= PAD_FLAG_INPUTALL;
+	pad.GetPadParam()->dwUseType = PAD_USE_TYPE_INITDEV;
+
+	dwRet = pad.Indicator(NULL, _initToken, PAD_TYPE_BIG);
+#endif
+
+#else
+	S_DEV_INITINFO sDevInit;
+	memset(&sDevInit, 0, sizeof(S_DEV_INITINFO));
+	sDevInit.dwSize = sizeof(S_DEV_INITINFO);
+	sDevInit.dwMaxSoPinTime = 16;
+	sDevInit.dwSoPinLen = 16;
+	BYTE pbSO[0x10]= {0};
+	LPBYTE pbSOKey = (LPBYTE)ONKEY_APP_OEM_INITKEY;
+	memcpy(pbSO, pbSOKey, sDevInit.dwSoPinLen);
+	sDevInit.pbSoPin = pbSO;
+
+	sDevInit.dwMaxUserPinTime = 6; // pin times
+	sDevInit.dwUserPinLen = lstrlenA(ONKEY_DEFAULT_USER_PIN);
+	sDevInit.pbUserPin = (LPBYTE)ONKEY_DEFAULT_USER_PIN;
+
+	sDevInit.dwLabelLen = 0;
+	sDevInit.pbLabel = (BYTE*)ONKEY_CUSTUMER_NAME;
+
+	dwRet = _initToken(dwSlotID, &sDevInit);
+#endif
+
+	if(ONKEY_ERR_SUCCESS == dwRet) //
+	{
+		char sDevSN[32] = {0};
+		int nSNLen = sizeof(sDevSN);
+		GetDeviceSN(sDevSN, &nSNLen, dwSlotID);
+
+		CStringA strSNName;
+		strSNName.Format(CRYPT_TENDYRON_S1, sDevSN);
+
+		Crypt_Cert_DeleteFromSystem(ONKEY_CSP_PROV_NAME, strSNName, -1);
+
+		return CCB_ERR_SUCCESS;
+	}
+
+	return CCB_ERR_FOMAT_KEY_FAILED;
+}
+
+// 裸签暂时不实现
+int CTDRCCBFunc::PriKeyCalc(char * psCtnName,			// 容器名称
+			   IN const BYTE * pPlain,		// 
+			   IN DWORD dwPlainSize,		// 
+			   OUT BYTE ** ppSignature,		// 
+			   OUT DWORD *pdwSignatureSize) // 裸签
+{
+	return CCB_ERR_SUCCESS;
+}
+
+// 文件结构完整性
+int CTDRCCBFunc::KeyFileSystemIsComplete()
+{
+	DWORD dwSlotList[ONKEY_MAX_TOKENCOUNT] = {0};
+	DWORD dwSlotCount = ONKEY_MAX_TOKENCOUNT;
+
+	_getSlotList(TRUE,dwSlotList,&dwSlotCount);
+	if( 0 == dwSlotCount)
+	{
+		return CCB_ERR_NO_KEY_CONNECTED;
+	}
+
+	char sDevBuf[128] = {0};
+	int nRetLen = sizeof(sDevBuf);
+
+	for(DWORD i=0; i<dwSlotCount; i++)
+	{
+		nRetLen = sizeof(sDevBuf);
+		memset(sDevBuf, 0x00, sizeof(sDevBuf));
+
+		GetDeviceSN(sDevBuf, &nRetLen, dwSlotList[i]);
+
+		if(lstrlenA(sDevBuf) <= 0)
+		{
+			return CCB_ERR_FILE_SYS_NOT_COMPLETE;
+		}
+	}
+	return CCB_ERR_SUCCESS;
+}
+
+// "C=CN, S=BJ, O=grandrole, OU=develop, CN=ten-test1, E=test@ten.com"
+
+void CTDRCCBFunc::ParseX500Str(stCertProperty & certProp)
+{
+	CStringA strX500 = certProp.strX500Str;
+	CStringA strPreStr, strNext; //"="号前面 和 后面的字符串
+	
+	int nPrePos = 0, nNexPos = 0, nStrLen = 0;
+	while(strX500.GetLength() > 0)
+	{
+		nPrePos = strX500.Find("=");
+
+		if(nPrePos<=0)
+		{
+			break;
+		}
+		strPreStr = strX500.Left(nPrePos);
+		strPreStr.TrimLeft();
+		strPreStr.TrimRight();
+
+		nNexPos = strX500.Find(",");
+
+		if(nNexPos > nPrePos) //
+		{
+			strNext = strX500.Left(nNexPos);
+			nStrLen = strNext.GetLength();
+			strNext = strNext.Right(nStrLen - nPrePos -1);
+			strX500 = strX500.Right(strX500.GetLength() - nNexPos - 1);
+		}
+		else
+		{
+			if(nNexPos <= 0) // 最后一组没有","
+			{
+				strNext = strX500.Right(strX500.GetLength() - nPrePos -1);
+				strX500.Empty();
+			}
+		}
+
+		if(strPreStr.CompareNoCase("C") == 0)
+		{
+			certProp.strCert_C = strNext;
+		}
+		else if(strPreStr.CompareNoCase("S") == 0)
+		{
+			certProp.strCert_S = strNext;
+		}
+		else if(strPreStr.CompareNoCase("O") == 0)
+		{
+			certProp.strCert_O = strNext;
+		}
+		else if(strPreStr.CompareNoCase("OU") == 0)
+		{
+			certProp.strCert_OU = strNext;
+		}
+		else if(strPreStr.CompareNoCase("CN") == 0)
+		{
+			certProp.strCert_CN = strNext;
+		}
+		else if(strPreStr.CompareNoCase("E") == 0)
+		{
+			certProp.strCert_E = strNext;
+		}
+		else
+		{
+			break;
+		}
+		strNext.Empty();
+	}
+}
+
+
+bool CTDRCCBFunc::ParseCertProperty(PCCERT_CONTEXT pCertContext,
+									stCertProperty & stCertProp)
+{
+	if (pCertContext == NULL)
+	{
+		return false;
+	}
+
+	CHAR pszNameString[0x200] = {0};
+	DWORD dwNameLen = 0x200;
+
+	// Owner(证书持有者)
+	DWORD dwRV = CertGetNameStringA(
+		pCertContext,   
+		CERT_NAME_SIMPLE_DISPLAY_TYPE,
+		0,
+		NULL,   
+		pszNameString,   
+		dwNameLen);
+	if (dwRV > 0)
+	{
+		stCertProp.strOwner = pszNameString;
+	}
+
+	// Issuer(颁发者)
+	dwRV = CertGetNameStringA(
+		pCertContext,   
+		CERT_NAME_SIMPLE_DISPLAY_TYPE, //CERT_NAME_ATTR_TYPE,   
+		CERT_NAME_ISSUER_FLAG,   
+		NULL,   
+		pszNameString,
+		dwNameLen);
+	if (dwRV > 0)
+	{
+		stCertProp.strIssuer = pszNameString;
+	}
+
+	// Subject
+	CertNameToStrA(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 
+		&(pCertContext->pCertInfo->Subject),
+		CERT_SIMPLE_NAME_STR,
+		pszNameString,   
+		dwNameLen);
+
+	stCertProp.strSubject = pszNameString;
+
+
+	CertNameToStrA(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING, 
+		&(pCertContext->pCertInfo->Subject),
+		CERT_X500_NAME_STR,
+		pszNameString,   
+		dwNameLen);
+
+	stCertProp.strX500Str = pszNameString;
+
+	ParseX500Str(stCertProp); //X500-Str解析出来
+
+	// SN
+	stCertProp.dwCertSN = *((LPDWORD)(pCertContext->pCertInfo->SerialNumber.pbData));
+
+	FILETIME ftLocal;
+	// Not Before(有效起始日期)，先转换成本地的文件时间
+	FileTimeToLocalFileTime(&(pCertContext->pCertInfo->NotBefore), &ftLocal);
+	FileTimeToSystemTime(&ftLocal, &stCertProp.stStartTime);
+
+	// Not After(有效终止日期)，先转换成本地的文件时间
+	FileTimeToLocalFileTime(&(pCertContext->pCertInfo->NotAfter), &ftLocal);
+	FileTimeToSystemTime(&ftLocal, &stCertProp.stEndTime);
+
+	// Version
+	stCertProp.strVersion.Format( "V%d", pCertContext->pCertInfo->dwVersion + 1);
+
+	// Signature Algorithm
+	lstrcpyA(pszNameString, pCertContext->pCertInfo->SignatureAlgorithm.pszObjId);
+	if (lstrcmpA(pszNameString, szOID_RSA_SHA1RSA) == 0)
+	{
+		stCertProp.strSignAlg = Res_GetProfileString(_T("STR_ID_SHA1RSA_ALG"));
+	}
+	else if (lstrcmpA(pszNameString, szOID_RSA_MD5RSA) == 0)
+	{
+		stCertProp.strSignAlg = Res_GetProfileString(_T("STR_ID_MD5RSA_ALG"));
+	}
+	else
+	{
+		stCertProp.strSignAlg = Res_GetProfileString(_T("STR_ID_OTHER_ALG"));
+	}
+	
+	PCCERT_CHAIN_CONTEXT pChainContext = NULL;
+	CERT_ENHKEY_USAGE stEnhkeyUsage;
+	CERT_USAGE_MATCH stCertUsage;  
+	CERT_CHAIN_PARA  stChainPara;
+
+	stEnhkeyUsage.cUsageIdentifier = 0;
+	stEnhkeyUsage.rgpszUsageIdentifier = NULL;
+
+	stCertUsage.dwType = USAGE_MATCH_TYPE_AND;
+	stCertUsage.Usage  = stEnhkeyUsage;
+
+	stChainPara.cbSize = sizeof(CERT_CHAIN_PARA);
+	stChainPara.RequestedUsage = stCertUsage;
+
+	if(CertGetCertificateChain(NULL, pCertContext,NULL, NULL, &stChainPara, 0, NULL, &pChainContext)) 
+	{
+		stCertProp.dwCertStatus = pChainContext->TrustStatus.dwErrorStatus; // CERT_TRUST_IS_PARTIAL_CHAIN
+	}
+	else
+	{
+		stCertProp.dwCertStatus = GetLastError();
+	}
+
+	if(pChainContext)
+	{
+		CertFreeCertificateChain(pChainContext);
+	}
+
+	return true;
+}
+
+
+
+bool CTDRCCBFunc::IsSetupCSPFile()
+{
+	// 先检测不存在的选项
+	//if(!SoftRegItemIsExist()) // 软件用到的注册表选项是否存在
+	//{
+	//	return false;
+	//}
+
+	//if(!CSPRegItemIsExist()) // 检测CSP是否存在注册表选项
+	//{
+	//	return false;
+	//}
+
+	// 逐步检测软件选项
+	if(!CSPFileIsComplete()) // 检测所有的CSP需要使用的文件
+	{
+		return false;
+	}
+	return true;
+}
+
+
+
+//根证书是否注册至Firefox浏览器并通过SSL授权验证
+bool CTDRCCBFunc::IsRegRootToFirefox()
+{
+	return CCBRootCertIsRegFirefox();
+}
+
+//根证书是否注册至Firefox浏览器并通过SSL授权验证
+bool CTDRCCBFunc::IsRegRootToFirefox_P()
+{
+	return CommonProcessFirefox_P(CCB_FIREFOX_IS_REGROOT);
+}
+
+// P11动态库未加载至Firefox安全设备中
+bool CTDRCCBFunc::IsLoadP11ToFirefox() 
+{
+	return CCBFirefoxIsLoadP11();
+}
+
+// P11动态库未加载至Firefox安全设备中
+bool CTDRCCBFunc::IsLoadP11ToFirefox_P() 
+{
+	return CommonProcessFirefox_P(CCB_FIREFOX_IS_REGP11);
+}
+
+//  个人证书是否注册至Firefox浏览器中
+bool CTDRCCBFunc::IsRegMyCertToToFirefox_P() 
+{
+	return CommonProcessFirefox_P(CCB_FIREFOX_IS_REGMYCERT);
+}
+
+bool CTDRCCBFunc::IsRegMyCertToToFirefox() 
+{
+	CHAR sCertCtnName[512] = {0};
+
+	BYTE pbCertData[MAX_DATA_LEN] = {0};
+	DWORD dwCertLen = MAX_DATA_LEN;
+
+	if(CCB_ERR_SUCCESS != GetSysCertCtnName(sCertCtnName, pbCertData, &dwCertLen) )
+	{
+		return false;
+	}
+
+/*
+	if( !GetDeviceCertData(sCertCtnName, pbCertData, &dwCertLen) )
+	{
+		return false;
+	}
+*/
+	return CCBMyCertIsRegToFirefox(pbCertData, dwCertLen);
+}
+
+ // 修复注册表信息
+bool CTDRCCBFunc::RepairRegInfo()
+{
+	return RepairSetupRegInfo(); // CCBDetect.h 中实现，和检测代码一起，方便修改
+}
+
+// 修复IE-COM 
+bool CTDRCCBFunc::RepairIECom()
+{
+	return ( TRUE == CCB_RepairIECOM() );
+}
+
+// 修复Firefox插件注册表信息
+bool CTDRCCBFunc::RepairFirefoxPlugin()
+{
+	return (TRUE == CCB_RepairFirefoxPluginItem());
+}
+
+// 重置IE安全级别
+bool CTDRCCBFunc::RetsetIESecLevel()
+{
+	return (TRUE == CCB_ResetIESecurityLevel());
+}
+
+// 清理Firefox插件注册表信息
+bool CTDRCCBFunc::UnRegistFirefoxPlugin()
+{
+	CCB_UnRegistFirefoxPlugin();
+	return true;
+}
+
+void CTDRCCBFunc::CCBRegAllMyCert()
+{
+	DWORD dwSlotList[ONKEY_MAX_TOKENCOUNT], dwCount = ONKEY_MAX_TOKENCOUNT;
+
+	// 获取现存在的设备列表
+	if(_getSlotList(TRUE, dwSlotList, &dwCount) != ONKEY_ERR_SUCCESS)
+	{
+		return ;
+	}
+
+	DWORD i = 0;
+
+	// 新插入的设备
+	for (i=0; i<dwCount; i++)
+	{
+		DWORD dwSlotID = dwSlotList[i];
+		if (dwSlotID > 0)
+		{
+			CHAR szSN[20], szTokenName[128], szRegNameBase[256];
+
+			S_DEV_CONFIG info;
+			memset(&info, 0, sizeof(info));
+			info.dwSize = sizeof(S_DEV_CONFIG);
+			_getDevInfo(dwSlotID, 0, &info);
+
+			memset(szSN, 0, sizeof(szSN));
+			memcpy(szSN, info.sCOSInfo.m_ShellNum, 16);
+
+			wsprintfA(szTokenName, CRYPT_TENDYRON_ONKEYTOKEN_D1, dwSlotID);
+			wsprintfA(szRegNameBase, CRYPT_TENDYRON_S1, szSN);
+
+			// 获取证书数据，并注册
+			BYTE baNamesBuff[0x1000], baCertsBuff[0x8000]; // 32K
+			CSP_MULTI_CERTS multiCerts = {dwSlotID, baNamesBuff, sizeof(baNamesBuff), baCertsBuff, sizeof(baCertsBuff)};
+			if (Crypt_EnumAllCerts(&multiCerts, sizeof(multiCerts)) == 0)
+			{
+				CHAR szRegName[300];
+				// 注册 "\\.\Tendyron <SN>\<ConName>"
+				::ZeroMemory(szRegName, sizeof(szRegName));
+				::CopyMemory(szRegName, szRegNameBase, lstrlenA(szRegNameBase));
+
+				LPBYTE pbNamePtr = multiCerts.pbNamesBuff;
+				LPBYTE pbCertPtr = multiCerts.pbCertsBuff;
+				for (; pbNamePtr < (multiCerts.pbNamesBuff + multiCerts.dwNamesLen); )
+				{
+					::ZeroMemory(szRegName, sizeof(szRegName));
+					::CopyMemory(szRegName, szRegNameBase, lstrlenA(szRegNameBase));
+					::CopyMemory(szRegName+lstrlenA(szRegNameBase), pbNamePtr+2, pbNamePtr[1]);
+
+					Crypt_Cert_AddToSystem(ONKEY_CSP_PROV_NAME, szRegName, pbNamePtr[0], pbCertPtr+2, (pbCertPtr[0] << 8) + pbCertPtr[1]);
+				
+					pbNamePtr += 2 + pbNamePtr[1];
+					pbCertPtr += 2 + (pbCertPtr[0] << 8) + pbCertPtr[1];
+				}
+			}
+		}
+	}
+}
+
+
+// 修复IE个人证书
+bool CTDRCCBFunc::RepairMyCert()
+{
+	CCBRegAllMyCert();
+	return true;
+}
+
+// 修复IE根证书
+bool CTDRCCBFunc::RepairRootCert()
+{
+	CCBInstallRootCert();
+	return true;
+}
+
+// 修复服务进程
+bool CTDRCCBFunc::RepairService()
+{
+	CCBStartSmartService();
+	return true;
+}
+
+// 修复Firefox根证书
+bool CTDRCCBFunc::RepairFirefoxRootCert()
+{
+	return CCBRegFirefoxRootCert();
+}
+
+bool CTDRCCBFunc::RepairFirefoxRootCert_P()
+{
+	return CommonProcessFirefox_P(CCB_FIRFOX_CTRL_CMD_REGROOT);
+}
+
+// 修复Firefox加载P11
+bool CTDRCCBFunc::RepairFirefoxLoadP11_P()
+{
+	return CommonProcessFirefox_P(CCB_FIRFOX_CTRL_CMD_REGP11);
+}
+
+bool CTDRCCBFunc::RepairFirefoxLoadP11()
+{
+	return CCBAddP11ModuleToFirefox();
+}
+
+
+// 修复Firefox个人证书
+bool CTDRCCBFunc::RepairFirefoxMyCert_P()
+{
+	return CommonProcessFirefox_P(CCB_FIRFOX_CTRL_CMD_REGMYCERT);
+}
+
+bool CTDRCCBFunc::RepairFirefoxMyCert()
+{
+  	CHAR sCertCtnName[512] = {0};
+
+	BYTE pbCertData[MAX_DATA_LEN] = {0};
+	DWORD dwCertLen = MAX_DATA_LEN;
+
+	if(CCB_ERR_SUCCESS != GetSysCertCtnName(sCertCtnName, pbCertData, &dwCertLen) )
+	{
+		return false;
+	}
+
+/*
+	if( !GetDeviceCertData(sCertCtnName, pbCertData, &dwCertLen) )
+	{
+		return false;
+	}
+*/
+	return CCBRegMyCertToFirefox(pbCertData, dwCertLen);
+}
+
+bool CTDRCCBFunc::UninstallFirefoxP11Module() //卸载firefox-P11模块
+{
+	return CCBDeleteP11ModuleFromFirefox();
+}
+
+bool CTDRCCBFunc::UninstallFirefoxP11Module_P() //卸载firefox-P11模块
+{
+	return CommonProcessFirefox_P(CCB_FIRFOX_CTRL_CMD_REGP11_U);
+}
+
+bool CTDRCCBFunc::UnregMyCertFromFirefox()  // 注销firefox个人证书
+{
+  	CHAR sCertCtnName[512] = {0};
+
+	BYTE pbCertData[MAX_DATA_LEN] = {0};
+	DWORD dwCertLen = MAX_DATA_LEN;
+
+	if(CCB_ERR_SUCCESS != GetSysCertCtnName(sCertCtnName, pbCertData, &dwCertLen) )
+	{
+		return false;
+	}
+
+/*
+	if( !GetDeviceCertData(sCertCtnName, pbCertData, &dwCertLen) )
+	{
+		return false;
+	}
+*/
+	return CCBUnregMyCertFromFirefox(pbCertData, dwCertLen);
+}
+
+bool CTDRCCBFunc::UnregMyCertFromFirefox_P() // 注销firefox个人证书
+{
+	return true;
+}
+
+bool CTDRCCBFunc::CommonProcessFirefox_P(LPTSTR psCmd)
+{
+	DWORD dwIndex = 0;
+	TCHAR szFirefoxInstallPath[MAX_PATH] = {0} , szDllFilePathName[MAX_PATH] = {0}; 
+	::GetSystemDirectory(szFirefoxInstallPath, MAX_PATH);// 系统路径
+
+	for(;szFirefoxInstallPath[dwIndex] != L'\\';  dwIndex++)
+	{
+	}
+	szFirefoxInstallPath[dwIndex] = 0x00;
+
+#define CCB_SOFT_CAROOT_INSTALL_DIR CCB_PROGRAMFILES_DIR CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_PLUGIN_PATH  TEXT("CARoot\\")
+#define CCB_SOFT_CAROOT_INSTALL_DIR_64 CCB_PROGRAMFILES_DIR_x64 CCB_FIREFOXCTRL_COMPONENTS_PATH CCB_PLUGIN_PATH  TEXT("CARoot\\")
+
+	if(OS::g_WinVersion.Is64())
+	{
+		lstrcat(szFirefoxInstallPath, CCB_SOFT_CAROOT_INSTALL_DIR_64);
+	}
+	else
+	{
+		lstrcat(szFirefoxInstallPath, CCB_SOFT_CAROOT_INSTALL_DIR);
+	}
+
+	lstrcat(szFirefoxInstallPath, CCB_FIREFOXCTRL_EXE_NAME);
+
+	PROCESS_INFORMATION ProcessInfo;
+	STARTUPINFO StartupInfo; //入口参数
+	ZeroMemory(&StartupInfo, sizeof(StartupInfo));
+	StartupInfo.cb = sizeof StartupInfo ; //分配大小
+	DWORD dwExitCode = 1;
+
+	if(CreateProcess(szFirefoxInstallPath, 
+		psCmd,
+		NULL,
+		NULL,
+		FALSE,
+		0,
+		NULL,
+		NULL,
+		&StartupInfo,
+		&ProcessInfo))
+
+	{
+		WaitForSingleObject(ProcessInfo.hProcess,INFINITE);
+		GetExitCodeProcess(ProcessInfo.hProcess, &dwExitCode);
+		CloseHandle(ProcessInfo.hThread);
+		CloseHandle(ProcessInfo.hProcess);
+	}
+
+	if(dwExitCode != 0)
+		return false;
+
+	return true;
+}
+
+
+

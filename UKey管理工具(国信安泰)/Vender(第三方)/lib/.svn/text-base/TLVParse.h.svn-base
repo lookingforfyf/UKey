@@ -1,0 +1,206 @@
+#ifndef _TLV_PARSE_H_
+#define _TLV_PARSE_H_
+
+#pragma pack(1)
+
+#pragma warning(disable:4200)
+
+class TLVParse
+{
+public:
+
+#define TAG_LEN		2
+#define LEN_LEN		16
+#define MAX_LEN		10
+
+#define TRANS_TAG_HEAD_LEN	2
+#define TRANS_TAG_LEN	4
+#define TRANS_LEN_LEN	4
+
+#define TAG_CODE	"02"
+#define TAG_FILE	"01"
+#define TAG_TRANS	"00"
+
+	typedef struct stTLV
+	{
+		BYTE baTag[TAG_LEN];
+		BYTE baLen[LEN_LEN];
+		BYTE baData[0];
+	}ST_TLV, *LPST_TLV;
+
+	typedef struct stTLVData
+	{
+		LPST_TLV pCode;
+		LPST_TLV pFile;
+		LPST_TLV pTrans;
+	}ST_TLVDATA, *LPST_TLVDATA;
+
+	static DWORD GetTLLen()
+	{
+		return (TAG_LEN+LEN_LEN);
+	}
+
+	static DWORD GetDataCode(LPST_TLV pTLV)
+	{
+		if(memcmp(pTLV->baTag , TAG_CODE, sizeof(pTLV->baTag)) == 0)
+		{
+			return (pTLV->baData[0] - '0');
+		}
+		return 0;
+	}
+
+	static DWORD GetLangID(LPST_TLV pTLV)
+	{
+		if(memcmp(pTLV->baTag , TAG_CODE, sizeof(pTLV->baTag)) == 0)
+		{
+			return (pTLV->baData[1] - '0')*100 + (pTLV->baData[2] - '0')*10 + (pTLV->baData[3] - '0');
+		}
+		return 0;
+	}
+
+	static DWORD GetDataLen(LPST_TLV pTLV)
+	{
+		DWORD dwLen = 0;
+		if(pTLV)
+		{
+			DWORD dwFactor = 10; // 因子
+			dwLen = pTLV->baLen[LEN_LEN-1] - '0';
+			for(int i=LEN_LEN-2; i > LEN_LEN - MAX_LEN; i--)
+			{
+				dwLen += ( (pTLV->baLen[i]-'0') * dwFactor);
+				dwFactor *= 10;
+			}
+		}
+		return dwLen;
+	}
+
+	static DWORD CalcTransDataLen(LPBYTE pbLen)
+	{
+		DWORD dwLen = 0;
+		if(pbLen)
+		{
+			DWORD dwFactor = 10; // 因子
+			dwLen = pbLen[TRANS_LEN_LEN-1] - '0';
+			for(int i=TRANS_LEN_LEN-2; i >= 0; i--)
+			{
+				dwLen += ( (pbLen[i]-'0') * dwFactor);
+				dwFactor *= 10;
+			}
+		}
+
+		return dwLen;
+	}
+
+	static bool Parse(LPBYTE pbData, DWORD dwDataLen, LPST_TLVDATA pstData)
+	{
+		if(pbData)
+		{
+			pstData->pCode = (LPST_TLV)(pbData);
+			if(memcmp(pstData->pCode->baTag , TAG_CODE, sizeof(pstData->pCode->baTag)) != 0)
+				return false;
+			
+			pstData->pFile = (LPST_TLV)(pbData+GetDataLen(pstData->pCode)+GetTLLen());
+			if(memcmp(pstData->pFile->baTag , TAG_FILE, sizeof(pstData->pFile->baTag)) != 0)
+				return false;
+
+			pstData->pTrans = (LPST_TLV)(pbData+GetDataLen(pstData->pCode)+GetTLLen()+GetDataLen(pstData->pFile)+GetTLLen());
+			if(memcmp(pstData->pTrans->baTag , TAG_TRANS, sizeof(pstData->pTrans->baTag)) != 0)
+				return false;
+
+			if(GetDataLen(pstData->pCode)+GetDataLen(pstData->pFile)+GetDataLen(pstData->pTrans)+3*GetTLLen() != dwDataLen)
+				return false;
+
+			return true;
+		}
+		return false;
+	}
+
+	static bool GetTransData(DWORD dwCodeType,LPBYTE pbInTrans, DWORD dwInLen, LPWSTR pbOutData, LPDWORD pdwOutLen, LPDWORD pdwShowDataLen)
+	{
+		LPST_TLV pstTransData = (LPST_TLV)(pbInTrans);
+
+		if(GetTLLen()+GetDataLen(pstTransData) != dwInLen) // TLV格式校验
+		{
+			return false;
+		}
+		return GetTransData(dwCodeType, pstTransData, pbOutData, pdwOutLen, pdwShowDataLen);
+	}
+
+#define TAG_SN	"SN"
+#define TAG_SV	"SV"
+#define TAG_DN	"DN"
+#define TAG_DV	"DV"
+
+	/*
+	0 - GBK
+	0 - UTF-8
+	0 - UNICODE
+	*/
+
+#ifndef _WINDOWS_
+#include "windows.h"
+#endif
+	static bool GetTransData(DWORD dwCodeType, LPST_TLV pstTransData, LPWSTR pbOutData, LPDWORD pdwOutLen, LPDWORD pdwShowDataLen)
+	{
+		for(int i=0; pstTransData->baData[i] != 0x00 ; )
+		{
+			if((memcmp(pstTransData->baData+i, TAG_SN, TRANS_TAG_HEAD_LEN) != 0)
+			 && (memcmp(pstTransData->baData+i, TAG_SV, TRANS_TAG_HEAD_LEN) != 0)
+			 && (memcmp(pstTransData->baData+i, TAG_DN, TRANS_TAG_HEAD_LEN) != 0)
+			 && (memcmp(pstTransData->baData+i, TAG_DV, TRANS_TAG_HEAD_LEN) != 0) 
+				)
+			{
+				return false;
+			}
+
+			int nOriginalLen = CalcTransDataLen(pstTransData->baData+i+TRANS_LEN_LEN);
+
+			int nConvertRetLen = 0;
+
+#define MAX_SHOW_DATA_LEN  2048
+
+			BYTE baText[MAX_SHOW_DATA_LEN] = {0};
+			WCHAR wsBuff[MAX_SHOW_DATA_LEN] = {0};
+
+			switch(dwCodeType)
+			{
+			case 0: // GBK
+				nConvertRetLen = ::MultiByteToWideChar(936, 0, (LPCSTR)pstTransData->baData+i+TRANS_TAG_LEN+TRANS_LEN_LEN, nOriginalLen, wsBuff, MAX_SHOW_DATA_LEN);
+				//nConvertRetLen *= 2;
+				break;
+			case 1: // UTF-8
+				nConvertRetLen = ::MultiByteToWideChar(CP_UTF8, 0, (LPCSTR)pstTransData->baData+i+TRANS_TAG_LEN+TRANS_LEN_LEN, nOriginalLen, wsBuff, MAX_SHOW_DATA_LEN);
+				//nConvertRetLen *= 2;
+				break;
+			case 2: // UNICODE
+				memcpy(wsBuff, pstTransData->baData+i+TRANS_TAG_LEN+TRANS_LEN_LEN, nOriginalLen);
+				nConvertRetLen = nOriginalLen/2;
+				break;
+			default:
+				break;
+			}
+
+			//::WideCharToMultiByte(0, 0, wsBuff, -1, (LPSTR)baText, sizeof(baText), NULL, NULL);
+			if((memcmp(pstTransData->baData+i, TAG_SN, TRANS_TAG_HEAD_LEN) == 0) || (memcmp(pstTransData->baData+i, TAG_SV, TRANS_TAG_HEAD_LEN) == 0) )
+			{
+				memcpy(pbOutData+(*pdwOutLen), wsBuff, nConvertRetLen*2);
+				*pdwOutLen += nConvertRetLen;
+				*pdwShowDataLen += nConvertRetLen;
+			}
+
+			if(	(memcmp(pstTransData->baData+i, TAG_SV, TRANS_TAG_HEAD_LEN) == 0) || (memcmp(pstTransData->baData+i, TAG_DV, TRANS_TAG_HEAD_LEN) == 0) )
+			{
+				memcpy(pbOutData+(*pdwOutLen), LPBYTE("\x0d\x00\x0a\x00"), 4);
+				*pdwOutLen += 2;
+			}
+
+			i += nOriginalLen+TRANS_TAG_LEN+TRANS_LEN_LEN;
+		}
+
+		return true;
+	}
+};
+
+#pragma pack()
+
+#endif

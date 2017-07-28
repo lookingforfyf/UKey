@@ -1,0 +1,455 @@
+#ifndef __ONKEY_REG_H__
+#define __ONKEY_REG_H__
+
+//#include <strsafe.h>
+#include "string.h"
+#include "WinVersion.h"
+#include "shlobj.h"
+
+
+class CMyRegistry
+{
+public:
+	CMyRegistry(HKEY hKeyBase, LPCTSTR lpszKeyPath, DWORD dwSA = KEY_QUERY_VALUE)
+	{
+		m_hSectionKey = NULL;
+		
+		DWORD dwDisposition = 0;
+
+		if(dwSA == KEY_QUERY_VALUE)
+		{
+			m_ulRet = RegOpenKeyEx(hKeyBase, lpszKeyPath, REG_OPTION_NON_VOLATILE, dwSA, &m_hSectionKey);
+		}
+		else
+		{
+			m_ulRet = RegCreateKeyEx(hKeyBase, lpszKeyPath, 0, REG_NONE,
+				REG_OPTION_NON_VOLATILE, dwSA, NULL,
+				&m_hSectionKey,	&dwDisposition); // KEY_ALL_ACCESS
+		}
+	}
+	~CMyRegistry()
+	{
+		if (m_hSectionKey)
+			RegCloseKey(m_hSectionKey);
+	}
+
+	BOOL GetProfileString(LPCTSTR lpszEntry, LPCTSTR lpszDefault, LPTSTR lpszValue)
+	{
+		if (m_hSectionKey)
+		{
+			DWORD dwType = 0, dwCount = 256;
+			LONG lResult = RegQueryValueEx(m_hSectionKey, (LPTSTR)lpszEntry, NULL, &dwType,
+				(LPBYTE)lpszValue, &dwCount);
+			if (lResult == ERROR_SUCCESS && dwType == REG_SZ)
+				return TRUE;
+		}
+		//为了防止修改注册表，而语言文件存在的情况
+		if(lstrcmp(lpszEntry, TEXT("SoftInstallPath")) == 0 && lstrlen(lpszValue) == 0)
+		{
+			TCHAR szPath[MAX_PATH] = {0};
+			if (SHGetSpecialFolderPath(NULL, szPath, CSIDL_PROGRAM_FILES, FALSE))
+			{
+				wsprintf(lpszValue, TEXT("%s\\CCBComponents\\Tendyron"), szPath);
+				return TRUE;
+			}
+			else
+			{
+				lstrcpy(lpszValue, lpszDefault);
+			}
+		}
+		return FALSE;
+	}
+
+	BOOL GetProfileString(LPCTSTR lpszEntry, LPCTSTR lpszDefault, LPTSTR lpszValue, DWORD &dwMaxLen)
+	{
+		if (m_hSectionKey)
+		{
+			DWORD dwType = 0 ;
+			LONG lResult = RegQueryValueEx(m_hSectionKey, (LPTSTR)lpszEntry, NULL, &dwType,
+				(LPBYTE)lpszValue, &dwMaxLen);
+			if (lResult == ERROR_SUCCESS && dwType == REG_SZ)
+				return TRUE;
+		}
+		//为了防止修改注册表，而语言文件存在的情况
+		if(lstrcmp(lpszEntry, TEXT("SoftInstallPath")) == 0 && lstrlen(lpszValue) == 0)
+		{
+			TCHAR szPath[MAX_PATH] = {0};
+			if (SHGetSpecialFolderPath(NULL, szPath, CSIDL_PROGRAM_FILES, FALSE))
+			{
+				wsprintf(lpszValue, TEXT("%s\\CCBComponents\\Tendyron"), szPath);
+				return TRUE;
+			}
+			else
+			{
+				lstrcpy(lpszValue, lpszDefault);
+			}
+		}
+		return FALSE;
+	}
+
+	BOOL SetProfileString(LPCTSTR lpszEntry, LPTSTR lpszValue)
+	{
+		if (m_hSectionKey)
+		{
+			return ( ERROR_SUCCESS == RegSetValueEx(m_hSectionKey, (LPTSTR)lpszEntry, 0, REG_SZ, (LPBYTE)lpszValue, lstrlen(lpszValue)*sizeof(TCHAR) ) );
+		}
+		return FALSE;
+	}
+
+	UINT GetProfileInt(LPCTSTR lpszEntry, int nDefault)
+	{
+		if (m_hSectionKey)
+		{
+			DWORD dwValue = nDefault;
+			DWORD dwType = 0;
+			DWORD dwCount = sizeof(DWORD);
+			LONG lResult = RegQueryValueEx(m_hSectionKey, (LPTSTR)lpszEntry, NULL, &dwType,
+				(LPBYTE)&dwValue, &dwCount);
+			if (lResult == ERROR_SUCCESS && dwType == REG_DWORD)
+				return (UINT)dwValue;
+		}
+		return nDefault;
+	}
+
+	UINT SetProfileInt(LPCTSTR lpszEntry, DWORD dwValue)
+	{
+		if (m_hSectionKey)
+		{
+			DWORD dwType = 0;
+			DWORD dwCount = sizeof(DWORD);
+			LONG lResult = RegSetValueEx(m_hSectionKey, (LPTSTR)lpszEntry, 0, REG_DWORD, (LPBYTE)&dwValue, 4);
+			return lResult;
+		}
+		return 1;
+	}
+
+	BOOL GetSubKeyName(DWORD dwSubIndex, LPTSTR psSubKeyName, DWORD dwMaxBufLen)
+	{
+		FILETIME fileTime = {0};
+		LPTSTR psNameBuf = NULL;
+		DWORD dwCurMaxLen = 0;
+
+		dwCurMaxLen = RegEnumKeyEx(m_hSectionKey, dwSubIndex, psNameBuf, &dwCurMaxLen, NULL, NULL, NULL, &fileTime);
+
+		psNameBuf = new TCHAR[dwCurMaxLen];
+		memset(psNameBuf, 0x00, dwCurMaxLen*sizeof(TCHAR) );
+
+		LONG lRet = RegEnumKeyEx(m_hSectionKey, dwSubIndex, psNameBuf, &dwCurMaxLen, NULL, NULL, NULL, &fileTime);
+
+		BOOL bRet = FALSE;
+		if(ERROR_SUCCESS == lRet)
+		{
+			if(dwCurMaxLen <= dwMaxBufLen)
+			{
+				bRet = TRUE;
+				memcpy(psSubKeyName, psNameBuf, dwCurMaxLen*sizeof(TCHAR) );
+			}
+		}
+		if(psNameBuf)
+		{
+			delete psNameBuf;
+		}
+		return bRet;
+	}
+
+	DWORD GetProfileBinary(LPCTSTR lpszEntry, LPBYTE pbRetValue, LPDWORD pdwValueLen)
+	{
+		if (m_hSectionKey)
+		{
+			DWORD dwType = 0;
+			DWORD dwRetValueLen = *pdwValueLen;
+
+			LONG lResult = RegQueryValueEx(m_hSectionKey, (LPTSTR)lpszEntry, NULL, &dwType, pbRetValue, &dwRetValueLen);
+
+			if (lResult == ERROR_SUCCESS && dwType == REG_BINARY && dwRetValueLen > 0)
+			{
+				*pdwValueLen = dwRetValueLen;
+				return dwRetValueLen;
+			}
+		}
+		*pdwValueLen = 0;
+		return 0;
+	}
+
+	BOOL SetProfileBinary(LPCTSTR lpszEntry, LPBYTE lpszValue, DWORD pdwValueLen)
+	{
+		if (m_hSectionKey)
+		{
+			return ( ERROR_SUCCESS == RegSetValueEx(m_hSectionKey, (LPTSTR)lpszEntry, 0, REG_BINARY, (LPBYTE)lpszValue, pdwValueLen) );
+		}
+		return FALSE;
+	}
+
+	BOOL RegNotExist()
+	{
+		return ( (m_ulRet == ERROR_FILE_NOT_FOUND) && (NULL == m_hSectionKey) );
+	}
+
+protected:
+	HKEY m_hSectionKey;
+	LONG m_ulRet;
+};
+
+static UINT Reg_GetProfileInt(LPCTSTR pszKey)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH);
+	return reg.GetProfileInt(pszKey, 0);
+}
+
+static UINT Reg_GetProfileInt(LPCTSTR pszKey, int nDefault)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH);
+	return reg.GetProfileInt(pszKey, nDefault);
+}
+
+#ifdef __ATLSTR_H__
+static CString Reg_GetProfileString(LPCTSTR pszKey)
+{
+	CString strValue;
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH);
+	reg.GetProfileString(pszKey, TEXT(""), strValue.GetBuffer(MAX_PATH));
+	strValue.ReleaseBuffer();
+	return strValue;
+}
+#endif
+
+static LPCTSTR Reg_GetProfileString(LPCTSTR pszKey, LPTSTR pszValue)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, ONKEY_INSIDE_REGPATH);
+	reg.GetProfileString(pszKey, TEXT(""), pszValue);
+	return pszValue;
+}
+
+static BOOL Reg_SetProfileString(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, LPTSTR pszValue)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath, KEY_SET_VALUE);
+	return reg.SetProfileString(pszKey, pszValue);
+}
+
+static BOOL Reg_SetProfileStringEx(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, LPTSTR pszValue, DWORD dwSAFlag)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath, KEY_SET_VALUE|dwSAFlag);
+	return reg.SetProfileString(pszKey, pszValue);
+}
+
+static BOOL RegDelnodeRecurse (HKEY hKeyRoot, LPTSTR lpSubKey)
+{
+	LPTSTR lpEnd;
+	LONG lResult;
+	DWORD dwSize;
+	TCHAR szName[MAX_PATH] = {0};
+	HKEY hKey;
+	FILETIME ftWrite;
+
+	// First, see if we can delete the key without having
+	// to recurse.
+
+	lResult = RegDeleteKey(hKeyRoot, lpSubKey);
+
+	if (lResult == ERROR_SUCCESS) 
+		return TRUE;
+
+	lResult = RegOpenKeyEx (hKeyRoot, lpSubKey, 0, KEY_READ, &hKey);
+
+	if (lResult != ERROR_SUCCESS) 
+	{
+		if (lResult == ERROR_FILE_NOT_FOUND) {
+			return TRUE;
+		} 
+		else {
+			return FALSE;
+		}
+	}
+
+	// Check for an ending slash and add one if it is missing.
+
+	lpEnd = lpSubKey + lstrlen(lpSubKey);
+
+	if (*(lpEnd - 1) != TEXT('\\')) 
+	{
+		*lpEnd =  TEXT('\\');
+		lpEnd++;
+		*lpEnd =  TEXT('\0');
+	}
+
+	// Enumerate the keys
+
+	dwSize = MAX_PATH;
+	lResult = RegEnumKeyEx(hKey, 0, szName, &dwSize, NULL,
+		NULL, NULL, &ftWrite);
+
+	if (lResult == ERROR_SUCCESS) 
+	{
+		do {
+
+			lstrcpy(lpEnd,szName);
+			//StringCchCopy (lpEnd, MAX_PATH*2, szName);
+
+			if (!RegDelnodeRecurse(hKeyRoot, lpSubKey)) {
+				break;
+			}
+
+			dwSize = MAX_PATH;
+
+			lResult = RegEnumKeyEx(hKey, 0, szName, &dwSize, NULL,
+				NULL, NULL, &ftWrite);
+
+		} while (lResult == ERROR_SUCCESS);
+	}
+
+	lpEnd--;
+	*lpEnd = TEXT('\0');
+
+	RegCloseKey (hKey);
+
+	// Try again to delete the key.
+
+	lResult = RegDeleteKey(hKeyRoot, lpSubKey);
+
+	if (lResult == ERROR_SUCCESS) 
+		return TRUE;
+
+	return FALSE;
+}
+
+static BOOL RegDelnode (HKEY hKeyRoot, LPTSTR lpSubKey)
+{
+	TCHAR szDelKey[MAX_PATH*2] = {0};
+
+	lstrcpy(szDelKey, lpSubKey);
+
+	//StringCchCopy (szDelKey, MAX_PATH*2, lpSubKey);
+	return RegDelnodeRecurse(hKeyRoot, szDelKey);
+}
+
+static BOOL Reg_DeleteKey(HKEY hBaseKey, LPCTSTR pszKey)
+{
+	 return RegDelnode(hBaseKey, (LPTSTR)pszKey);
+}
+
+static LPCTSTR Reg_GetProfileString(LPCTSTR pszRegPath, LPCTSTR pszKey, LPTSTR pszValue)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, pszRegPath);
+	reg.GetProfileString(pszKey, TEXT(""), pszValue);
+	return pszValue;
+}
+
+static LPCTSTR Reg_GetProfileString(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, LPTSTR pszValue, DWORD &dwMaxLen)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath);
+	reg.GetProfileString(pszKey, TEXT(""), pszValue, dwMaxLen);
+	return pszValue;
+}
+
+static LPCTSTR Reg_GetProfileStringEx(LPCTSTR pszRegPath, LPCTSTR pszKey, LPTSTR pszValue, DWORD dwSAFlag)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, pszRegPath, KEY_QUERY_VALUE|dwSAFlag);
+	reg.GetProfileString(pszKey, TEXT(""), pszValue);
+	return pszValue;
+}
+
+static LPCTSTR Reg_GetProfileStringEx(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, LPTSTR pszValue, DWORD dwSAFlag)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath, KEY_QUERY_VALUE|dwSAFlag);
+	reg.GetProfileString(pszKey, TEXT(""), pszValue);
+	return pszValue;
+}
+
+static LPCTSTR Reg_GetProfileString(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, LPTSTR pszValue)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath);
+	reg.GetProfileString(pszKey, TEXT(""), pszValue);
+	return pszValue;
+}
+
+static UINT Reg_GetProfileInt(LPCTSTR pszRegPath, LPCTSTR pszKey, int nDefault)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, pszRegPath);
+	return reg.GetProfileInt(pszKey, nDefault);
+}
+
+static UINT Reg_GetProfileIntEx(LPCTSTR pszRegPath, LPCTSTR pszKey, int nDefault, DWORD dwSAFlag)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, pszRegPath, KEY_QUERY_VALUE|dwSAFlag);
+	return reg.GetProfileInt(pszKey, nDefault);
+}
+
+static UINT Reg_GetProfileIntEx(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, int nDefault, DWORD dwSAFlag)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath, KEY_QUERY_VALUE|dwSAFlag);
+	return reg.GetProfileInt(pszKey, nDefault);
+}
+
+static UINT Reg_GetProfileInt(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, int nDefault)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath);
+	return reg.GetProfileInt(pszKey, nDefault);
+}
+
+static UINT Reg_SetProfileInt(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, DWORD dwValue)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath, KEY_SET_VALUE);
+	return reg.SetProfileInt(pszKey, dwValue);
+}
+
+static UINT Reg_SetProfileIntEx(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, DWORD dwValue, DWORD dwSAFlag)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath, KEY_SET_VALUE|dwSAFlag);
+	return reg.SetProfileInt(pszKey, dwValue);
+}
+
+static UINT Reg_GetProfileBinaryEx(LPCTSTR pszRegPath, LPCTSTR pszKey, LPBYTE pbRetBuf, LPDWORD pdwRetBufLen, DWORD dwSAFlag)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, pszRegPath, KEY_QUERY_VALUE|dwSAFlag);
+	return reg.GetProfileBinary(pszKey, pbRetBuf, pdwRetBufLen);
+}
+
+static UINT Reg_GetProfileBinary(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, LPBYTE pbRetBuf, LPDWORD pdwRetBufLen)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath);
+	return reg.GetProfileBinary(pszKey, pbRetBuf, pdwRetBufLen);
+}
+
+static UINT Reg_GetProfileBinary(LPCTSTR pszRegPath, LPCTSTR pszKey, LPBYTE pbRetBuf, LPDWORD pdwRetBufLen)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, pszRegPath);
+	return reg.GetProfileBinary(pszKey, pbRetBuf, pdwRetBufLen);
+}
+
+static BOOL Reg_SetProfileBinary(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, LPBYTE pszValue, DWORD dwValueLen)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath, KEY_SET_VALUE);
+	return reg.SetProfileBinary(pszKey, pszValue, dwValueLen);
+}
+
+static BOOL Reg_SetProfileBinaryEx(HKEY hBaseKey, LPCTSTR pszRegPath, LPCTSTR pszKey, LPBYTE pszValue, DWORD dwValueLen, DWORD dwSAFlag)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath, KEY_SET_VALUE|dwSAFlag);
+	return reg.SetProfileBinary(pszKey, pszValue, dwValueLen);
+}
+
+static BOOL Reg_ProfileNotExistEx(HKEY hBaseKey, LPCTSTR pszRegPath, DWORD dwSAFlag)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath, KEY_QUERY_VALUE|dwSAFlag);
+	return reg.RegNotExist();
+}
+
+static BOOL Reg_ProfileNotExistEx(LPCTSTR pszRegPath, DWORD dwSAFlag)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, pszRegPath, KEY_QUERY_VALUE|dwSAFlag);
+	return reg.RegNotExist();
+}
+
+static BOOL Reg_ProfileNotExist(HKEY hBaseKey, LPCTSTR pszRegPath)
+{
+	CMyRegistry reg(hBaseKey, pszRegPath);
+	return reg.RegNotExist();
+}
+
+static BOOL Reg_ProfileNotExist(LPCTSTR pszRegPath)
+{
+	CMyRegistry reg(HKEY_LOCAL_MACHINE, pszRegPath);
+	return reg.RegNotExist();
+}
+
+#endif

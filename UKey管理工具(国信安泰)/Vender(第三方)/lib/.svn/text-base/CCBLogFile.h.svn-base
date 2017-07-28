@@ -1,0 +1,187 @@
+#ifndef _ICBCLOGFILE_H_
+#define _ICBCLOGFILE_H_
+
+#include <stdio.h>
+#include <shlobj.h>
+
+#define SECURITY_WIN32
+#include <Sddl.h>
+
+namespace OS
+{
+
+	class COnKeyLog
+	{
+#define CCB_FILE_1			("CCB_TDRKey_1.log")
+#define CCB_FILE_2			("CCB_TDRKey_2.log")
+#define CCB_FILE_SIZE		0x96000
+
+	public :
+		enum{
+			ONKEYLOG_INSERT = 0,
+			ONKEYLOG_REMOVE,
+			ONKEYLOG_SIGN,
+		};
+		COnKeyLog()
+		{
+		}
+		~COnKeyLog()
+		{
+
+		}
+
+		BOOL Init(LPSTR szFileName)
+		{
+			TCHAR szLogFilePath[MAX_PATH] = {0};
+			Reg_GetProfileString(TEXT("SoftInstallPath"), szLogFilePath);
+			lstrcat(szLogFilePath, TEXT("\\"));
+			lstrcat(szLogFilePath, TEXT("log")); 
+
+			CHAR sPath[MAX_PATH] = {0};
+#ifdef UNICODE
+			::WideCharToMultiByte(0, 0, szLogFilePath, sizeof(szLogFilePath), sPath, sizeof(sPath), NULL, 0);
+#else
+			lstrcpyA(sPath, szLogFilePath);
+#endif
+
+			CHAR szF_1[MAX_PATH] = {0};
+			CHAR szF_2[MAX_PATH] = {0};
+			wsprintfA(szF_1, ("%s\\%s"), sPath, CCB_FILE_1);
+			wsprintfA(szF_2, ("%s\\%s"), sPath, CCB_FILE_2);
+
+			DWORD dwSize_1 = 0;
+			DWORD dwSize_2 = 0;
+			WIN32_FIND_DATAA fd_1, fd_2;
+			HANDLE h_1 = FindFirstFileA(szF_1, &fd_1);
+			HANDLE h_2 = FindFirstFileA(szF_2, &fd_2);
+			FILE *fp = NULL;
+
+			if(h_1 == INVALID_HANDLE_VALUE)
+			{
+				fp = fopen(szF_1, "wb");
+				if(NULL == fp)  return FALSE;
+				fclose(fp);
+				dwSize_1 = 0;
+				//SetFileAttributesA(szF_1, FILE_ATTRIBUTE_HIDDEN);
+			}
+			else
+			{
+				dwSize_1 = fd_1.nFileSizeLow;
+			}
+			if(h_2 == INVALID_HANDLE_VALUE)
+			{
+				fp = fopen(szF_2, "wb");
+				if(NULL == fp)  return FALSE;
+				fclose(fp);
+				dwSize_1 = 0;
+				//SetFileAttributesA(szF_2, FILE_ATTRIBUTE_HIDDEN);
+			}
+			else
+			{
+				dwSize_2 = fd_2.nFileSizeLow;
+			}
+
+			//同时为空，则使用ICBC_FILE_1
+			if(h_1 == INVALID_HANDLE_VALUE && h_2 == INVALID_HANDLE_VALUE)
+			{
+				lstrcpyA(szFileName, szF_1);
+				return TRUE;
+			}
+			else
+			{
+				if(dwSize_1 < CCB_FILE_SIZE)//600K
+				{
+					lstrcpyA(szFileName, szF_1);
+					return TRUE;
+				}
+				else if(dwSize_2 < CCB_FILE_SIZE)//600K
+				{
+					lstrcpyA(szFileName, szF_2);
+					return TRUE;
+				}
+				else // 都大于600k
+				{
+					long ret = CompareFileTime(&(fd_1.ftLastWriteTime), &(fd_2.ftLastWriteTime));
+					if(ret <= 0)
+					{
+						lstrcpyA(szFileName, szF_1);
+						//清空文件1
+						fp = fopen(szF_1, "wb");
+						if(NULL == fp)  return FALSE;
+						fclose(fp);
+						return TRUE;
+					}
+					else 
+					{
+						lstrcpyA(szFileName, szF_2);
+						//清空文件2
+						fp = fopen(szF_2, "wb");
+						if(NULL == fp)  return FALSE;
+						fclose(fp);
+						return TRUE;
+					}
+				}
+			}
+			return FALSE;
+		};
+
+		void WriteLog(LPSTR szLogInfo)
+		{
+			if(szLogInfo == NULL)  return;
+
+			int nType = 0;
+
+			CHAR szFile[MAX_PATH] = {0};
+			if(Init(szFile))
+			{
+				CHAR szInfo[0x800] = {0};
+				CHAR szUser[0x400] = {0};
+				CHAR szType[0x100];
+				DWORD dw = 0x400;
+
+				GetUserNameA(szUser, &dw);//如果获取不到则为空
+
+				if(nType == ONKEYLOG_INSERT)
+				{
+					lstrcpyA(szType, ("Insert"));
+				}
+				else if(nType == ONKEYLOG_REMOVE)
+				{
+					lstrcpyA(szType, ("Remove"));
+				}
+				else if(nType == ONKEYLOG_SIGN)
+				{
+					lstrcpyA(szType, ("Sign"));
+				}
+				else
+				{
+					return;
+				}
+				SYSTEMTIME t;
+				GetLocalTime(&t);
+
+				//时间 登录用户名 序列号
+				wsprintfA(szInfo, "[%02d.%02d.%02d-%02d:%02d:%02d.%03d][%s][%s]\r\n", t.wYear, t.wMonth, 
+					t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, szUser, szLogInfo );
+				if(lstrlenA(szInfo) > (sizeof(szInfo) / sizeof(CHAR)) )
+					szInfo[0x800] = 0;
+/*
+				char *szBase = base64_encode((unsigned char*)szInfo, lstrlenA(szInfo));
+				char *szData = (char*)malloc(lstrlenA(szInfo) * 2);
+				wsprintfA(szData, "%s\r\n", szBase);
+*/
+				FILE *fp = fopen(szFile, "ab");
+				if(fp != NULL)
+				{
+					dw = (DWORD)fwrite(szInfo, sizeof(CHAR), lstrlenA(szInfo), fp);
+					fclose(fp);
+				}
+				//CopyFileA(szFile, ("e:\\1.txt"), FALSE);
+			}
+			return;
+		}
+	};
+	__declspec(selectany) COnKeyLog g_onKeyLog;
+};
+
+#endif

@@ -1,0 +1,95 @@
+#ifndef _SECURITY_ATTRIBUTES_H__
+#define _SECURITY_ATTRIBUTES_H__
+
+#include <Sddl.h>
+//#include <WtsApi32.h>
+#include "WinVersion.h"
+
+namespace OS
+{
+	class CSecurityAttributes
+	{
+	public:
+		CSecurityAttributes()
+		{
+			m_pTempSD = NULL;
+		}
+		~CSecurityAttributes()
+		{
+			if (m_pTempSD != NULL)
+				::LocalFree(m_pTempSD);
+		}
+
+		operator LPSECURITY_ATTRIBUTES()
+		{
+			return &m_oSecAttr;
+		}
+
+		bool BuildLowIntegrity(BOOL bDenyAccessWithNetUser = TRUE, BOOL bInheritHandle = FALSE)
+		{
+			m_oSecAttr.nLength			= sizeof(m_oSecAttr);
+			m_oSecAttr.bInheritHandle	= bInheritHandle;
+			m_oSecAttr.lpSecurityDescriptor = &m_pSecDesc;
+			
+			::InitializeSecurityDescriptor(m_oSecAttr.lpSecurityDescriptor, SECURITY_DESCRIPTOR_REVISION);
+			if (!::SetSecurityDescriptorDacl(m_oSecAttr.lpSecurityDescriptor, TRUE, 0, FALSE))
+				return false;
+
+			// 不允许网络用户访问
+			if (bDenyAccessWithNetUser)
+			{
+				LPCTSTR pszSD = TEXT("D:")  // Discretionary ACL
+				TEXT("(D;OICI;GA;;;NU)")// Deny access to net
+				TEXT("(D;OICI;GA;;;NO)")//net
+				TEXT("(D;OICI;GA;;;NS)")//net
+				TEXT("(A;OICI;GAGRGWGXFAFRFRFXRPWPCCDCLCSWLODTCR;;;WD)");//Allow read/write/execute to everyone
+				//TEXT("(A;OICI;GAGRGWGXFAFRFRFXRPWPCCDCLCSWLODTCR;;;BG)")//built-in guests
+				//TEXT("(A;OICI;GAGRGWGXFAFRFRFXRPWPCCDCLCSWLODTCR;;;BA)")//Built-in administrators
+				//TEXT("(A;OICI;GAGRGWGXFAFRFRFXRPWPCCDCLCSWLODTCR;;;BU)")//Built-in users
+				//TEXT("(A;OICI;GAGRGWGXFAFRFRFXRPWPCCDCLCSWLODTCR;;;AU)")//Authenticated users
+				//TEXT("(A;OICI;GAGRGWGXFAFRFRFXRPWPCCDCLCSWLODTCR;;;SY)");//system
+				if (::ConvertStringSecurityDescriptorToSecurityDescriptor(pszSD, SDDL_REVISION_1, &m_pTempSD, NULL ))
+				{
+					PACL pDacl = NULL;                  // not allocated
+					BOOL fSaclPresent = FALSE;
+					BOOL fSaclDefaulted = FALSE;
+					if (::GetSecurityDescriptorDacl(m_pTempSD, &fSaclPresent, &pDacl, &fSaclDefaulted))
+					{
+						::SetSecurityDescriptorDacl(m_oSecAttr.lpSecurityDescriptor, TRUE, pDacl, FALSE);
+					}
+				}
+			}
+
+			if (g_WinVersion.IsVistaLater())
+			{
+				LPCTSTR LOW_INTEGRITY_SDDL_SACL = TEXT("S:(ML;;NW;;;LW)"); 
+				if (::ConvertStringSecurityDescriptorToSecurityDescriptor(LOW_INTEGRITY_SDDL_SACL, SDDL_REVISION_1, &m_pTempSD, NULL ))
+				{
+					PACL pSacl = NULL;                  // not allocated
+					BOOL fSaclPresent = FALSE;
+					BOOL fSaclDefaulted = FALSE;
+					if (::GetSecurityDescriptorSacl(m_pTempSD, &fSaclPresent, &pSacl, &fSaclDefaulted))
+					{
+						if (::SetSecurityDescriptorSacl(m_oSecAttr.lpSecurityDescriptor, TRUE, pSacl, FALSE))
+						{
+							return true;
+						}
+					}
+				}
+				return false;
+			}
+			return true;
+		}
+
+	protected:
+		SECURITY_ATTRIBUTES m_oSecAttr;
+		CHAR m_pSecDesc[SECURITY_DESCRIPTOR_MIN_LENGTH];
+		PSECURITY_DESCRIPTOR m_pTempSD;
+
+	private:
+		CSecurityAttributes(const CSecurityAttributes& other);
+		CSecurityAttributes& operator=(const CSecurityAttributes& other);
+	};
+}; // namespace OnKey
+
+#endif

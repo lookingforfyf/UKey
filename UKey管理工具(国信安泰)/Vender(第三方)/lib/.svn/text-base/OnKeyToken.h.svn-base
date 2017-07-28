@@ -1,0 +1,446 @@
+#ifndef _ONKEY_TOKEN_H_
+#define _ONKEY_TOKEN_H_
+
+
+#include "OnKeyDevice.h"
+
+#ifdef  __cplusplus
+extern "C" {
+#endif
+
+
+#ifndef ONKEY_TOKEN_API
+  #define ONKEY_TOKEN_API __attribute__((visibility("default")))
+#endif
+
+
+
+// -----------------------------------------------------------------------------
+// FLAG
+// -----------------------------------------------------------------------------
+
+#define ONKEY_FLAG_OJB_PRI					0x01			// 对象数据受PIN保护	ONKEY_FLAG_PRIVATE
+#define ONKEY_FLAG_OJB_PUB					0x02			// 对象数据读写自由		ONKEY_FLAG_PUBLIC
+//#define ONKEY_FLAG_OJB_CSP_CON				0x10			// 标记CSP容器对象
+//#define ONKEY_FLAG_OJB_CSP_CERT				0x20			// 标记CSP证书对象
+#define ONKEY_FLAG_OJB_EXT_LOAD				0x00010000		// 标记加载对象数据(ReadObjectEx)
+#define ONKEY_FLAG_OJB_EXT_INVALID			0x00020000		// 标记本进程数据无效(ONKEY_PARAM_TOKEN_GET_LOADTYPE)
+
+
+// 获取额外设备信息
+#define ONKEY_FLAG_INFO_MEM					0x00020000		// 空间使用情况
+#define ONKEY_FLAG_INFO_OSPIN				0x00040000		// 管理员密码信息
+#define ONKEY_FLAG_INFO_USERPIN				0x00080000		// 用户密码信息
+#define ONKEY_FLAG_INFO_DEFAULT				(ONKEY_FLAG_INFO_MEM | ONKEY_FLAG_INFO_OSPIN | ONKEY_FLAG_INFO_USERPIN)
+
+//
+#define ONKEY_MAX_TOKENCOUNT				10				// 支持最大TOKEN个数
+#define ONKEY_MAX_PAIRCOUNT					16				// 支持密钥对个数(16)
+
+
+//
+#define ONKEY_SLOT_MASK						0x0000FFFF		// 有效SLOTID
+#define ONKEY_SLOT_FLAGS					0xFFFF0000		// SLOT类型
+#define ONKEY_SLOT_NOVERIFYPIN				0x00100000		// 不校验密码
+#define ONKEY_SLOT_SELECTNONE				0x20000000		// 不选择目录
+
+
+// param type
+#define ONKEY_PARAM_TOKEN_GET_LOADTYPE			100001			// 获取标志（是否要加载对象数据）
+
+#define ONKEY_PARAM_TOKEN_IS_VALIDPIN			100202			// 密码是否有效（输入操作类型）
+#define ONKEY_PARAM_TOKEN_IS_VALIDDATA			100203			// 数据是否有效
+
+#define ONKEY_PARAM_TOKEN_EXEC_CLOSEDH			100101			// 关闭设备句柄
+
+#define ONKEY_PARAM_TOKEN_GET_DEVNAME			100401			//为了切换设备
+
+#define ONKEY_PARAM_TOKEN_GET_DEVICECHANGED		100102			// 获取当前设备列表变动情况（设备不存在）
+
+#define ONKEY_PARAM_TOKEN_EXEC_LOCK				100301			// 进入进程锁
+#define ONKEY_PARAM_TOKEN_EXEC_UNLOCK			100302			// 
+
+
+// -----------------------------------------------------------------------------
+// 数据类型定义
+// -----------------------------------------------------------------------------
+
+// 枚举对象属性结构（只用指针）
+#define ONKEY_ENUM_OBJATTR_SIZE 8
+#pragma pack(1)
+typedef struct ONKEY_ENUM_OBJATTR
+{
+	WORD wIndex;
+	WORD wFlags;
+	UINT32 dwLength;
+	BYTE pbObjData[4];
+}ONKEY_ENUM_OBJATTR;
+typedef ONKEY_ENUM_OBJATTR * ONKEY_ENUM_OBJATTR_PTR;
+#pragma pack();
+
+
+enum DATA_NOTIFY_TYPE
+{
+	DATA_EVENT_TOKEN_INSERTED = 1, DATA_EVENT_TOKEN_REMOVED, DATA_NOTIFY_CERT_GEN, DATA_NOTIFY_CERT_DEL, DATA_NOTIFY_OTHER_GEN, DATA_NOTIFY_OTHER_DEL, DATA_NOTIFY_OTHER_UPDATE,
+	DATA_NOTIFY_PIN_CHANGED, DATA_NOTIFY_PIN_LOCK, DATA_NOTIFY_SOPIN_CHANGED, DATA_NOTIFY_SOPIN_LOCK,
+	DATA_NOTIFY_LABEL_CHANGED, DATA_NOTIFY_TOKEN_INIT
+};
+#pragma pack(1)
+// 事件数据结构
+typedef struct _ONKEY_EVENT_INFO
+{
+	enum { MAX_NAME_LEN = 128, MAX_DATA_LEN = 128 };
+	enum EventFlag
+	{
+		FLAG_LOCAL_EVENT = 0x00000001,
+	};
+
+	enum EventType 
+	{
+		SLOT_DEVICEARRIVAL = 1, SLOT_DEVICEREMOVE, SLOT_NODESCHANGED, SLOT_BUILDLIST, SLOT_REBUILDLIST,
+		DATA_ADDCERT, DATA_REMOVECERT, DATA_REFRESH, DATA_NOTIFY,
+		MGR_REGCLOSED, MGR_KILLREG, P11_INIT_EVENT
+	};
+	DWORD dwType;
+	union UN_EventInfo
+	{
+		struct ST_SLOT_EVENT_INFO
+		{
+			DWORD dwSlotID;
+			TCHAR szName[MAX_NAME_LEN];
+		}slotEvent;
+		struct ST_DATA_EVENT_INFO
+		{
+			DWORD dwSlotID;
+			DWORD dwObjectID; // == MsgID FROM DATA_NOTIFY_TYPE
+			DWORD dwLength;
+			union UN_Data
+			{
+				BYTE pbData[MAX_DATA_LEN];
+			}unData;
+		}dataEvent;
+	}unEventInfo;
+}ONKEY_EVENT_INFO, * ONKEY_EVENT_INFO_PTR;
+
+#pragma pack();
+// -----------------------------------------------------------------------------
+// 动态库导出函数
+// -----------------------------------------------------------------------------
+
+ONKEY_TOKEN_API DWORD OnKeyT_ContextInit();
+ONKEY_TOKEN_API DWORD OnKeyT_ContextFinal(BOOL bForce);
+// part1
+ONKEY_TOKEN_API DWORD OnKeyT_GetSlotList
+(
+ IN  BOOL bPresent,
+ OUT LPDWORD pdwSlotList,
+ IN OUT LPDWORD pwdCount
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_AppendEventInfo
+(
+ IN DWORD dwFlags, 
+ IN ONKEY_EVENT_INFO_PTR pEventInfo
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_WaitForSlotEvent
+(
+ IN DWORD dwFlags, 
+ OUT ONKEY_EVENT_INFO_PTR pEventInfo 
+ );
+ONKEY_TOKEN_API DWORD OnKeyT_Name2SlotID
+(
+ IN  LPCTSTR pszName,
+ OUT LPDWORD pdwSlotID
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_ClearObjectsLoadType
+(
+ IN  DWORD slotID,
+ IN  DWORD dwFlags
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_InitToken
+(
+ IN  DWORD slotID,
+ IN OUT PS_DEV_INITINFO pInit
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_ClearToken
+(
+ IN  DWORD slotID,
+ IN  DWORD dwFlags
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_ManTokenParam
+(
+ IN  DWORD slotID,
+ IN  DWORD dwParam,
+ OUT LPVOID pData
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_GetRandBytes
+(
+ IN  DWORD slotID,
+ OUT LPBYTE pRand,
+ IN  DWORD dwRandLen
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_GetDeviceInfo
+(
+ IN  DWORD slotID,
+ IN  DWORD dwFlags,
+ OUT PS_DEV_CONFIG pInfo
+ );
+
+
+// part2
+
+ONKEY_TOKEN_API DWORD OnKeyT_GetObjectList
+(
+ IN  DWORD slotID,
+ IN  DWORD dwFlags,
+ OUT  LPDWORD pdwIndexList,
+ IN OUT LPDWORD pdwCount
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_CreateObject
+(
+ IN  DWORD slotID,
+ IN  DWORD dwFlags,
+ OUT LPDWORD pdwIndex,
+ IN  LPBYTE pObject,
+ IN  DWORD dwObjectLen,
+ IN  DWORD dwKeyUsed
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_ReadObject
+(
+ IN  DWORD slotID,
+ IN  DWORD dwFlags,
+ IN  DWORD dwIndex,
+ OUT LPBYTE pObject,
+ IN OUT LPDWORD pdwObjectLen
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_ReadObjectEx
+(
+ IN  DWORD slotID,
+ IN  DWORD dwFlags,
+ OUT LPBYTE pObjects,
+ IN OUT LPDWORD pdwObjectsLen
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_UpdateObject
+(
+ IN  DWORD slotID,
+ IN  DWORD dwFlags,
+ IN  DWORD dwIndex,
+ IN  LPBYTE pObject,
+ IN  DWORD dwObjectLen
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_DeleteObject
+(
+ IN  DWORD slotID,
+ IN  DWORD dwFlags,
+ IN  DWORD dwIndex,
+ IN  DWORD dwKeyUsed
+ );
+
+
+// part3
+
+ONKEY_TOKEN_API DWORD OnKeyT_Login
+(
+ IN  DWORD slotID,
+ IN  DWORD dwType,
+ IN  LPBYTE pbPin,
+ IN  DWORD  dwPinLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_Logout
+(
+ IN  DWORD slotID,
+ IN  DWORD dwType
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_ChangePin
+(
+ IN  DWORD slotID,
+ IN  DWORD dwType,
+ IN  LPBYTE pbOldPin,
+ IN  DWORD  dwOldPinLen,
+ IN  LPBYTE pbNewPin,
+ IN  DWORD  dwNewPinLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_ReloadPin
+(
+ IN  DWORD slotID,
+ IN  LPBYTE pbOsPin,
+ IN  DWORD  dwOsPinLen,
+ IN  LPBYTE pbUserPin,
+ IN  DWORD  dwUserPinLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_GeneratePairKey
+(
+ IN  DWORD slotID,
+ OUT LPDWORD pdwKeyIndex,
+ IN  DWORD dwModBits,
+ IN  LPBYTE pbE,
+ IN  DWORD dwELen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_ImportPairKey
+(
+ IN  DWORD slotID,
+ OUT LPDWORD pdwKeyIndex,
+ IN  DWORD dwKeyFlag,
+ IN  LPBYTE pbKeyStr,
+ IN  DWORD dwKeyLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_ExportPairKey
+(
+ IN  DWORD slotID,
+ IN  DWORD dwKeyIndex,
+ IN  DWORD dwKeyFlag,
+ OUT LPBYTE pbKeyStr,
+ IN OUT LPDWORD pdwKeyLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_RsaEncrypt
+(
+ IN  DWORD slotID,
+ IN  DWORD dwKeyIndex,
+ IN  LPBYTE pbData,
+ IN  DWORD dwDataLen,
+ OUT LPBYTE pbEncryptedData,
+ IN OUT  LPDWORD pdwEncryptedDataLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_RsaDecrypt
+(
+ IN  DWORD slotID,
+ IN  DWORD dwKeyIndex,
+ IN  LPBYTE pbEncryptedData,
+ IN  DWORD dwEncryptedDataLen,
+ OUT LPBYTE pbData,
+ IN OUT  LPDWORD pdwDataLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_RsaSign
+(
+ IN  DWORD slotID,
+ IN  DWORD dwKeyIndex,
+ IN  DWORD dwHashFlags, 
+ IN  LPBYTE pbData,
+ IN  DWORD dwDataLen,
+ OUT LPBYTE pbSignature,
+ IN OUT  LPDWORD pdwSignatureLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_RsaSign_DHASH
+( 
+ DWORD slotID, 
+ DWORD dwKeyIndex, 
+ DWORD dwHashFlags, 
+ LPBYTE pbHashData, 
+ DWORD dwHashLen, 
+ DWORD dwEncode,
+ LPBYTE pbData21Ptr, 
+ DWORD dwData21Len, 
+ LPBYTE pbData22Ptr, 
+ DWORD dwData22Len, 
+ LPBYTE pbSignature, 
+ LPDWORD pdwSignatureLen
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_RsaVerify
+(
+ IN  DWORD slotID,
+ IN  DWORD dwKeyIndex,
+ IN  DWORD dwHashFlags, 
+ IN  LPBYTE pbSignature,
+ IN  DWORD pdwSignatureLen,
+ OUT LPBYTE pbData,
+ IN OUT  LPDWORD pdwDataLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_DevAlgCalc( 
+ IN  DWORD dwSlotID,
+ IN  BYTE bEncrypt,
+ IN  DWORD dwMode, //ecb or cbc
+ IN  LPBYTE pbKey,
+ IN  LPBYTE pbIn,
+ IN  DWORD dwInLen,
+ OUT  LPBYTE pbOut,
+ OUT  DWORD *pdwOutLen
+);
+
+
+// ex
+
+ONKEY_TOKEN_API DWORD OnKeyT_Ex_SelectSlot
+(
+ IN  DWORD dwFlags,
+ IN  LPVOID pfnShowDialog,
+ OUT LPDWORD pSlotID
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_Ex_InputPasswd
+(
+ IN  DWORD dwFlags,
+ IN  LPVOID pfnShowDialog,
+ OUT DWORD dwSlotID,
+ OUT LPBYTE pbPin,
+ OUT LPDWORD pdwPinLen
+);
+
+ONKEY_TOKEN_API DWORD OnKeyT_Ex_DisplayInfo
+(
+ IN  DWORD dwFlags,
+ IN  LPVOID pfnShowDialog,
+ OUT DWORD dwSlotID
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_EccSign
+( 
+ DWORD slotID, 
+ DWORD dwKeyIndex, 
+ DWORD dwHashFlags, 
+ LPBYTE pbData, 
+ DWORD dwDataLen, 
+ LPBYTE pbSignature, 
+ LPDWORD pdwSignatureLen
+ );
+
+ONKEY_TOKEN_API DWORD OnKeyT_EccVerify(DWORD slotID, 
+									   DWORD dwKeyIndex, 
+									   DWORD dwHashFlags, 
+									   LPBYTE pbSignature, 
+									   DWORD pdwSignatureLen, 
+									   LPBYTE pbData, 
+									   LPDWORD pdwDataLen);
+
+ONKEY_TOKEN_API DWORD OnKeyT_EccEncrypt(DWORD slotID, 
+										DWORD dwKeyIndex, 
+										LPBYTE pbData, 
+										DWORD dwDataLen, 
+										LPBYTE pbEncryptedData, 
+										LPDWORD pdwEncryptedDataLen);
+
+ONKEY_TOKEN_API DWORD OnKeyT_EccDecrypt(DWORD slotID, 
+										DWORD dwKeyIndex, 
+										LPBYTE pbEncryptedData, 
+										DWORD dwEncryptedDataLen, 
+										LPBYTE pbData, 
+										LPDWORD pdwDataLen);
+
+#ifdef  __cplusplus
+} // extern "c"
+#endif
+
+#endif // #ifndef _ONKEY_TOKEN_H_

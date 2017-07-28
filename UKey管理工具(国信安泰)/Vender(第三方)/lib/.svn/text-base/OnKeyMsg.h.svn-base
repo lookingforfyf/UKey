@@ -1,0 +1,68 @@
+#ifndef _ONKEY_MSG_H__
+#define _ONKEY_MSG_H__
+
+#include <shlwapi.h>
+#pragma comment(lib, "shlwapi.lib")
+
+#ifndef ONKEY_REG_CLASSNAME
+# define ONKEY_REG_CLASSNAME	TEXT("OnKeyRegClass") ONKEY_SVR_WIN_FIX
+#endif
+#ifndef ONKEY_REG_WINNAME
+# define ONKEY_REG_WINNAME		TEXT("OnKeyReg001") ONKEY_SVR_WIN_FIX
+#endif
+
+//#define ONKEY_REG_DATACHANGED_EVENTNAME TEXT("OnKey_EventName_") ONKEY_REG_EXENAME 
+
+namespace OS
+{
+	inline bool RunRegProc()
+	{
+		HWND hWnd = ::FindWindow(ONKEY_REG_CLASSNAME, ONKEY_REG_WINNAME);
+		if (hWnd == NULL)
+		{
+			CHAR szAppName[MAX_PATH] = {0};
+			::GetModuleFileNameA(NULL, szAppName, MAX_PATH);
+			LPSTR pszName = ::PathFindFileNameA(szAppName);
+
+			char szRegExe[MAX_PATH] ;
+
+			memset(szRegExe,0,MAX_PATH);
+
+#ifdef _UNICODE			
+			WideCharToMultiByte(CP_ACP,0,ONKEY_SVR_REGCERTEXE,-1,szRegExe,MAX_PATH,NULL,NULL);
+#else
+			memcpy(szRegExe,ONKEY_SVR_REGCERTEXE,strlen(ONKEY_SVR_REGCERTEXE));
+#endif
+			lstrcatA(szRegExe, " restart"); //自修复，重新启动SVR
+
+			return (WinExec(szRegExe, SW_HIDE) > 31);
+		}
+		return true;
+	}
+
+	// 在vista下IE里不能发送信息（不以管理员方式运行IE）
+	//inline bool PostMessage(DWORD dwWndId, DWORD dwMessage, WPARAM wParam, LPARAM lParam)
+	//{
+	//	HWND hWnd = NULL;
+	//	if (dwWndId == ONKEY_WND_REG)
+	//		hWnd = ::FindWindow(ONKEY_SVR_CLASSNAME, ONKEY_SVR_WINNAME);
+	//	if (hWnd == NULL)
+	//		return false;
+
+	//	return ::PostMessage(hWnd, dwMessage, wParam, lParam) == TRUE;
+	//}	
+
+	//inline bool SetDataChangedEvent()
+	//{
+	//	BOOL bRet = FALSE;
+	//	HANDLE hEvent = ::OpenEvent(EVENT_ALL_ACCESS, FALSE, ONKEY_REG_DATACHANGED_EVENTNAME);
+	//	if (hEvent != NULL)
+	//	{
+	//		bRet = ::SetEvent(hEvent);
+	//		::CloseHandle(hEvent);
+	//	}
+	//	return (bRet == TRUE);
+	//}
+};
+
+#endif

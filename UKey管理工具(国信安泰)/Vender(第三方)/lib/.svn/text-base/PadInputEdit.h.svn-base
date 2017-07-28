@@ -1,0 +1,33 @@
+#ifndef C_PADINPUTEDIT_H
+#define C_PADINPUTEDIT_H
+
+#pragma once
+
+class CPadInputEdit : public CEdit
+{
+	DECLARE_DYNAMIC(CPadInputEdit)
+
+public:
+	CPadInputEdit();
+	virtual ~CPadInputEdit();
+
+public:
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
+
+protected:
+	int m_nMaxPinLen;
+	int m_nMinPinLen;
+
+public:
+	void SetPinLen(int max, int min);
+
+public:
+	afx_msg LRESULT OnPadInputKey(WPARAM wp, LPARAM lp);
+
+protected:
+	DECLARE_MESSAGE_MAP()
+public:
+	afx_msg void OnChar(UINT nChar, UINT nRepCnt, UINT nFlags);
+
+};
+#endif

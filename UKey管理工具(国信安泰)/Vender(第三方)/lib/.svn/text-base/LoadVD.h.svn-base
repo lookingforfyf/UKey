@@ -1,0 +1,73 @@
+#ifndef ONKEY_LOAD_VD_H
+#define ONKEY_LOAD_VD_H
+
+#pragma once
+
+#include "OnKeyPinpad.h"
+
+typedef unsigned long( *lpfnVDInputPin)(vdInputPinArg stPadArg);
+
+static DWORD WINAPI fnScanCoordinate(HANDLE hHandle, LPBYTE pInOutBuff, DWORD dwMaxLen)
+{
+	return 0;
+}
+
+class CLoadVD
+{
+public:
+	CLoadVD(void)
+	{
+		m_hMod = LoadLibrary(ONKEY_VD_DLLNAME);
+		m_pfnVDInfputPIN = (lpfnVDInputPin)GetProcAddress(m_hMod, "vdInputPin");
+	}
+
+	~CLoadVD(void)
+	{
+		FreeLibrary(m_hMod);
+	}
+
+public:
+
+	DWORD OnKeyVDInputPin(LPBYTE pbPIN, UINT* pdwPinLen,
+		BYTE btMinPinLen=6,BYTE btMaxPinLen=8, 
+		UINT udOriginalPinLen=0, LPBYTE pbOriginalPin=NULL,
+		DWORD dwPinType = 0)
+	{
+		if(NULL == m_pfnVDInfputPIN)
+			return ONKEY_PINPAD_SYSTEM_ERR;
+
+		vdInputPinArg stArg;
+		//输入参数
+		stArg.pszPadDLLName = ONKEY_PINPAD_DLLNAME;//PINPAD动态库名称
+		stArg.hInstanceHandle = NULL;//实体句柄
+		stArg.btMaxPinLen = btMaxPinLen;//最大密码长度
+		stArg.btMinPinLen = btMinPinLen;//最小密码长度
+		stArg.dwPadType = PAD_TYPE_BIG;//键盘类型
+		stArg.dwPadFlag = PAD_FLAG_INPUTALL;//键盘标示，输入PIN使用此标示
+		stArg.pfnCallBackFunc = (LPVOID)fnScanCoordinate;//扫描函数地址，输入
+
+		stArg.pNode = NULL;
+		stArg.dwPinType = dwPinType;
+		stArg.hParentWnd = NULL;
+		stArg.udOriginalPinLen = udOriginalPinLen;
+		stArg.pbOriginalPin = pbOriginalPin;
+
+		//输出参数
+		stArg.pszRetPinData = pbPIN;
+		stArg.pudRetPinLen = pdwPinLen;
+
+		return  m_pfnVDInfputPIN(stArg);
+
+	}
+
+	void GetPassText(UINT udPINLen, LPBYTE pbPIN)
+	{
+		for(UINT i=0; i<udPINLen; i++)
+			pbPIN[i] = '*';
+	}
+protected :
+	HMODULE m_hMod;
+	lpfnVDInputPin m_pfnVDInfputPIN;
+};
+
+#endif

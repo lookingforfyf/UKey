@@ -1,0 +1,357 @@
+// Utils.h
+
+#ifndef _UTILS_H_
+#define _UTILS_H_
+
+#include <shlwapi.h>
+
+
+namespace UTL
+{
+	inline LPVOID malloc( size_t n )                                           
+	{
+		return ::malloc(n); 
+	}
+	inline LPVOID calloc( size_t num, size_t size )                            { return ::calloc(num, size); } // set 0
+	inline LPVOID realloc( LPVOID p, size_t n )                                { return ::realloc(p, n); }
+	inline void   free( LPVOID memblock )                                      { ::free(memblock); }
+	inline LPVOID memset( LPVOID dest, int c, size_t count )		           { return ::memset(dest, c, count); }
+	inline LPVOID memmove( LPVOID dest, LPCVOID src, size_t count )            { return ::memmove(dest, src, count); }
+	inline LPVOID memcpy( LPVOID dest, LPCVOID src, size_t count )             { return ::memcpy(dest, src, count); }
+	inline int    memcmp( LPCVOID src1, LPCVOID src2, size_t count )           { return ::memcmp(src1, src2, count); }
+
+	inline int    strlen( LPCSTR string )                                      { return (!string) ? 0 : (int)::lstrlenA(string); }
+	inline int    strlen( LPCWSTR string )                                     { return (!string) ? 0 : (int)::lstrlenW(string); }
+	inline LPSTR  strcpy( LPSTR string1, LPCSTR string2 )                      { return ::lstrcpyA(string1, string2); }
+	inline LPWSTR strcpy( LPWSTR string1, LPCWSTR string2 )                    { return ::lstrcpyW(string1, string2); }
+	inline LPSTR  strncpy( LPSTR string1, LPCSTR string2, size_t count )       { return ::lstrcpynA(string1, string2, (int)count); }
+	inline LPWSTR strncpy( LPWSTR string1, LPCWSTR string2, size_t count )     { return ::lstrcpynW(string1, string2, (int)count); }
+	inline LPSTR  strcat( LPSTR string1,LPCSTR string2 )                       { return ::lstrcatA(string1, string2 ); }
+	inline LPWSTR strcat( LPWSTR string1,LPCWSTR string2 )                     { return ::lstrcatW(string1, string2 ); }
+
+	inline int    strcmp( LPCSTR string1, LPCSTR string2 )                     { return ::lstrcmpA(string1, string2); }
+	inline int    strcmp( LPCWSTR string1, LPCWSTR string2 )                   { return ::lstrcmpW(string1, string2); }
+	inline int    stricmp( LPCSTR string1, LPCSTR string2 )                    { return ::lstrcmpiA(string1, string2); }
+	inline int    stricmp( LPCWSTR string1, LPCWSTR string2 )                  { return ::lstrcmpiW(string1, string2); }
+
+	inline int    strncmp(LPCSTR string1, LPCSTR string2, size_t count )	   { return ::StrCmpNA(string1, string2, (int)count); }
+	inline int    strncmp(LPCWSTR string1, LPCWSTR string2, size_t count )	   { return ::StrCmpNW(string1, string2, (int)count); }
+	inline int    strnicmp(LPCSTR string1, LPCSTR string2, size_t count )	   { return ::StrCmpNIA(string1, string2, (int)count); }
+	inline int    strnicmp(LPCWSTR string1, LPCWSTR string2, size_t count )	   { return ::StrCmpNIW(string1, string2, (int)count); }
+	//{
+	//	for (size_t i=0; i<count; i++)
+	//	{
+	//		if (string1[i] == string2[i])
+	//		{
+	//			if (string1[i] == 0) break;
+	//		}
+	//		else
+	//		{
+	//			return (string1[i] > string2[i])? 1 : -1;
+	//		}
+	//	}
+	//	return 0;
+	//}
+
+	inline LPSTR  strchr( LPCSTR string, int c )                               { return ::StrChrA(string, (WORD)c); }
+	inline LPWSTR strchr( LPCWSTR string, int c )                              { return ::StrChrW(string, (WORD)c); }
+	//{
+	//	do
+	//	{
+	//		if (*string == c)
+	//		{
+	//			return const_cast< LPSTR >( string );
+	//		}
+	//		string ++ ;
+	//	} while( *string != 0 );
+
+	//	return NULL;
+	//}
+	inline LPSTR  strrchr( LPCSTR string, int c )                              { return ::StrRChrA(string, NULL, (WORD)c); }
+	inline LPWSTR strrchr( LPCWSTR string, int c )                             { return ::StrRChrW(string, NULL, (WORD)c); }
+	//{
+	//	LPCSTR pch = NULL;
+	//	while (*string != 0)
+	//	{
+	//		if (*string == c)
+	//			pch = string;
+	//		string ++;
+	//	}
+	//	return const_cast< LPSTR >( pch );
+	//}
+	inline LPSTR  strstr( LPSTR string1, LPCSTR string2 )                      { return ::StrStrA(string1, string2); }
+	inline LPWSTR strstr( LPWSTR string1, LPCWSTR string2 )                    { return ::StrStrW(string1, string2); }
+	//{
+	//	int nLen = UTL::strlen(string2);
+	//	if (nLen == 0)
+	//		return string1;
+
+	//	for (LPSTR pMatch, pStart = string1; ((pMatch = UTL::strchr(pStart, *string2)) != NULL); pStart++)
+	//	{
+	//		if (UTL::memcmp(pMatch, string2, nLen) == 0)
+	//			return pMatch;
+	//	}
+	//	return NULL;
+	//}
+	inline size_t strcspn( LPCSTR string1, LPCSTR string2 )                    { return ::StrCSpnA(string1, string2); }
+	inline size_t strcspn( LPCWSTR string1, LPCWSTR string2 )                  { return ::StrCSpnW(string1, string2); }
+	//{
+	//	int nRet = 0;		
+	//	for (LPCSTR p = string1; *p != 0; p++)
+	//	{
+	//		if(UTL::strchr(string2, *p) != NULL)
+	//			break;
+	//		nRet++;
+	//	}
+	//	return nRet;
+	//}
+
+	inline LPBYTE bytesrev( LPBYTE data, size_t num)
+	{
+		for (LPBYTE q = data, p=data+num-1; q < p; q++, p--)
+		{
+			BYTE t = *q;
+			*q = *p;
+			*p = t;
+		}
+		return data;
+	}
+	inline LPSTR  strrev( LPSTR string )
+	{
+		return (LPSTR)bytesrev((LPBYTE)string, UTL::strlen(string));
+	}
+
+
+	inline int ctoi(char ch)
+	{
+		if (ch >= '0' && ch <= '9')
+			return ch - '0';
+		else if (ch >= 'A' && ch <= 'Z')
+			return ch - 'A' + 10;
+		else if (ch >= 'a' && ch <= 'z')
+			return ch - 'a' + 10;
+		else
+			return -1;
+	}
+	inline char itoc(int ch)
+	{
+		if (ch >=0 && ch <= 9)
+			return ch + '0';
+		else if (ch >= 10 && ch<=36)
+			return ch - 10 + 'A';
+		else
+			return 0;
+	}
+	template< typename _IntType >
+	inline _IntType strtoi(LPCSTR nptr, LPSTR * endptr, int base = 10)
+	{
+		bool bNegative =  (*nptr == '-')? (nptr ++, true) : (false);
+		_IntType n = 0;
+		for (; ;)
+		{
+			int offset = UTL::ctoi(*(nptr++));
+			if (offset < 0 || !(offset <  base))
+				break;
+			n = n * base + offset;
+		}
+		if (endptr != NULL)
+		{
+			*endptr = (LPSTR)nptr;
+		}
+		return (bNegative)? (0-n) : (n);
+	}
+	template< typename _IntType >
+	inline int itostr(LPSTR nptr, _IntType n, int base = 10)
+	{
+		if (n < 0)
+		{
+			*(nptr++) = '-';
+			n = 0-n;
+		}
+		LPSTR q = nptr;
+		do{
+			*(nptr++) = UTL::itoc( static_cast<int>(n % base) );
+			n = n / base;
+		}while(n);
+		*nptr = 0;
+		int nResult = (int)(nptr - q);
+		UTL::strrev(q);
+		return nResult;
+	}
+
+	inline LPSTR  strupr( LPSTR lpsz )                                         { return CharUpperA(lpsz); };
+	inline LPWSTR strupr( LPWSTR lpsz )                                        { return CharUpperW(lpsz); };
+	inline LPSTR  strlwr( LPSTR lpsz )                                         { return CharLowerA(lpsz); };
+	inline LPWSTR strlwr( LPWSTR lpsz )                                        { return CharLowerW(lpsz); };
+	inline int    vsnprintf( LPSTR buf, size_t num, LPCSTR fmt, va_list args)  { return ::wvnsprintfA(buf,(int)num,fmt,args); }
+	inline int    vsnprintf( LPWSTR buf, size_t num, LPCWSTR fmt, va_list args){ return ::wvnsprintfW(buf,(int)num,fmt,args); }
+	inline int    snprintf( LPSTR buf, size_t num, LPCSTR fmt, ...)  
+	{
+		int nRet;
+		va_list marker;
+		va_start(marker, fmt );
+		nRet = UTL::vsnprintf(buf, num, fmt, marker);
+		va_end( marker );
+		
+		return nRet;
+	}
+	inline int    snprintf( LPWSTR buf, size_t num, LPCWSTR fmt, ...)  
+	{
+		int nRet;
+		va_list marker;
+		va_start(marker, fmt );
+		nRet = UTL::vsnprintf(buf, num, fmt, marker);
+		va_end( marker );
+		
+		return nRet;
+	}
+
+	inline DWORD GetTickCount()                                                { return ::GetTickCount(); }
+
+	inline size_t rzerotospace(LPBYTE data, size_t num)
+	{
+		size_t i=0;
+		for (; i<num && data[i]; i++)
+			;
+		if (i <num)
+		{
+			UTL::memset(data+i, ' ', num-i);
+		}
+		return i;
+	}
+
+	inline size_t rspacetozero(LPBYTE data, size_t num)
+	{
+		size_t i=num;
+		for (; i>0 && data[i-1]==' '; i--)
+			;
+		if (i < num)
+		{
+			UTL::memset(data+i, 0, num-i);
+		}
+		return i;
+	}
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// class CBuffer
+	class CBuffer {   
+	public:
+		CBuffer();
+		CBuffer(LPCSTR str);
+		CBuffer(LPCVOID data, UINT size);
+		CBuffer(const CBuffer &other);
+		virtual ~CBuffer();
+	public:
+		bool		Realloc(UINT size);
+		bool		Accept(CBuffer &other);
+		LPVOID		Detach();
+		LPVOID		GetData() const;
+		UINT		GetLength() const;
+		LPVOID		Append(LPCVOID data, UINT size);
+
+		LPSTR		Copy(LPCSTR string2);
+		LPSTR		NCopy(LPCSTR string2, size_t count);
+		LPSTR		Cat(LPCSTR string2);
+		LPSTR		InsertStr(LPCSTR str, UINT numChars, UINT pos, bool forceUseNumChars = false);
+		LPSTR		InsertChr(char ch, UINT pos);
+		UINT		ReplaceChr(char replaceCh, char withCh, UINT start=0);
+		CBuffer &	Format(LPCSTR fmt, ... );
+		CBuffer &	FormatV(LPCSTR fmt, va_list args);
+		////
+		//int			StrToInt(int base=10);
+		//LPCSTR		IntToStr(int value, int base=10);
+		//
+		bool		Find(LPCSTR string, UINT &found, UINT start = 0) const;
+		bool		Find(char ch, UINT &found, UINT start = 0) const;
+		bool		ReverseFind(char ch, UINT &found) const;
+		bool		FindOneOf(LPCSTR set, UINT &found) const;
+
+		CBuffer &	Trim();
+		CBuffer &	Reverse();
+		CBuffer &	Upper();
+		CBuffer &	Lower();
+		CBuffer &	RightZeroToSpace();
+		CBuffer &	RightSpaceToZero();
+
+		// ²Ù×÷·ûÖØÔØ
+	public: 
+		char	&	operator[](UINT index) const;
+		char	&	operator[](int index) const;
+		operator	LPSTR() const;
+		operator	LPCSTR() const;   
+		CBuffer &	operator=(const CBuffer &buf);
+		CBuffer &	operator=(LPCSTR str);
+		CBuffer &	operator+=(LPCSTR str);
+
+		bool		operator!() const;
+		bool		operator<(LPCSTR str) const;
+		bool		operator<=(LPCSTR str) const;
+		bool		operator==(LPCSTR str) const;
+		bool		operator==(LPSTR str) const;
+		bool		operator!=(LPCSTR str) const;
+		bool		operator>=(LPCSTR str) const;
+		bool		operator>(LPCSTR str) const;
+
+	protected:
+		void		InitNull();
+	protected:
+		LPVOID _data;
+		UINT _dataLength, _allocLength;
+	};
+
+	inline LPVOID		CBuffer::GetData() const		{ return _data; }
+	inline UINT			CBuffer::GetLength() const		{ return _dataLength; }
+	inline CBuffer &	CBuffer::Reverse()				{ UTL::strrev((LPSTR)_data); return *this; }
+	inline CBuffer &	CBuffer::Upper()				{ UTL::strupr((LPSTR)_data); return *this; }
+	inline CBuffer &	CBuffer::Lower()				{ UTL::strlwr((LPSTR)_data); return *this; }
+	inline CBuffer &	CBuffer::RightZeroToSpace()		{ _dataLength = (UINT)UTL::rzerotospace((LPBYTE)_data, _dataLength); return *this; }
+	inline CBuffer &	CBuffer::RightSpaceToZero()		{ _dataLength = (UINT)UTL::rspacetozero((LPBYTE)_data, _dataLength); return *this; }
+		
+			
+	inline CBuffer::operator LPSTR() const				{ return (LPSTR)_data; }
+	inline CBuffer::operator LPCSTR() const				{ return (LPCSTR)_data; }
+
+	inline bool CBuffer::operator!() const				{return _data ? FALSE : TRUE; }
+	inline bool CBuffer::operator<(LPCSTR str) const	{return (UTL::strcmp((LPCSTR)_data, str) < 0); }
+	inline bool CBuffer::operator<=(LPCSTR str) const	{return (UTL::strcmp((LPCSTR)_data, str) <= 0);}
+	inline bool CBuffer::operator==(LPCSTR str) const	{return (UTL::strcmp((LPCSTR)_data, str) == 0);}
+	inline bool CBuffer::operator==(LPSTR str)  const	{return (UTL::strcmp((LPCSTR)_data, str) == 0);}
+	inline bool CBuffer::operator!=(LPCSTR str) const	{return (UTL::strcmp((LPCSTR)_data, str) != 0);}
+	inline bool CBuffer::operator>=(LPCSTR str) const	{return (UTL::strcmp((LPCSTR)_data, str) >= 0);}
+	inline bool CBuffer::operator>(LPCSTR str) const	{return (UTL::strcmp((LPCSTR)_data, str) > 0); }
+
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// 
+#ifdef UTL_SUPPORT_CHECKPOINTER
+	static bool CheckPointer(void* pBuf, int nBufLen)
+	{
+		if(nBufLen <= 0)
+			return false;
+		try
+		{
+			for(int i=0; i<nBufLen; i++)
+			{
+				((unsigned char*)pBuf)[i] = 0x0A;
+				((unsigned char*)pBuf)[i] = 0x00;
+			}
+		}
+		catch(...)
+		{
+			return false;
+		}
+
+		return true;
+	}
+#else
+	inline bool CheckPointer(void* pBuf, int nBufLen)
+	{
+		pBuf;
+		nBufLen;
+		return true;
+	}
+#endif
+
+}; // namespace UTL
+
+#endif // !_UTILS_H_

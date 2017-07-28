@@ -1,0 +1,257 @@
+#ifndef __CCB_ENCRYPT_SN__
+
+#define __CCB_ENCRYPT_SN__
+
+#include <time.h>
+
+#pragma warning (disable : 4996)
+#pragma warning (disable : 4267)
+
+#define MAX_ENC_SN_LEN  512
+//____________________________________________________________________________
+// 建行要求如下代码保密
+//
+class CCBALGEncrypt
+{
+private :
+	static int CCBUKeyCodeChar(char *pczDict,char cT,char *pcRT,char *msg)
+	{
+		int i,iLen;
+		char aczDict[]="1234567890ABCDEF";
+
+		iLen=strlen(aczDict);
+		for( i=0;i<iLen;i++ )
+		{
+			if( cT==aczDict[i] ) break;
+		}
+		if( i==iLen )
+		{
+			sprintf(msg,"不支持该待加密符[%c]",cT);
+			return -1;
+		}
+
+		*pcRT=pczDict[i];
+
+		return 0;
+	}
+
+	static int CCBUKeyDealCode(char *pczDict,char *pczBuf,int iBufLen,char *msg)
+	{
+		int i,iRet;
+		char cRT;
+
+		for(i=0;i<iBufLen;i++)
+		{
+			cRT=0x0;
+			iRet=CCBUKeyCodeChar(pczDict,pczBuf[i],&cRT,msg);
+			if( iRet<0 ) return -1;
+			pczBuf[i]=cRT;
+		}
+		return 0;
+	}
+
+	/*
+	** 函数名：CCBUKeyCode
+	** 功能描述：根据字典、加密戳加密明文
+	** 返回值：<0 失败；0 成功；
+	** 参数说明：
+	**   pczDict：密码字典
+	**   pczDT：加密戳
+	**   iDTLen：加密戳长度
+	**   pczSrcBuf：明文
+	**   iSrcBufLen：明文长度
+	**   pczCodeBuf：用于存放密文的字符串指针
+	**   iCodeBufLen：可存放密文的最大长度
+	**   msg：出错信息
+	*/
+	static int CCBUKeyCode(char *pczDict,
+			char *pczDT,int iDTLen,
+			char *pczSrcBuf,int iSrcBufLen,
+			char *pczCodeBuf,int iCodeBufLen,
+			char *msg)
+	{
+		int i,j,k,iLen,iTmp,iRet;
+		char aczTmp[512],aczDTMix[32];
+		int iMix=0;
+		char *pczDTx=NULL;/* 处理后的加密戳 */
+		char *pczSrcBufHex=NULL;/* 明文HEX */
+		char *pczSrcDT=NULL,*pczSrcDT2=NULL;/* 给明文加上加密戳后的串 */
+		int iDTxLen=0;
+		int iSrcBufHexLen=0;
+		int iSrcDTLen=0;
+
+		iDTxLen=iDTLen*2+32;
+		if( iDTxLen<=32 )
+		{
+			sprintf(msg,"加密戳长度不合法[%d]",iDTLen);
+			return -1;
+		}
+
+		iSrcDTLen=iSrcBufLen+32;
+		if( iSrcDTLen<=32 )
+		{
+			sprintf(msg,"明文长度不合法[%d]",iSrcBufLen);
+			return -1;
+		}
+
+		iSrcBufHexLen=iSrcBufLen*2 + iSrcDTLen + 128;
+		if( iSrcBufHexLen<=(32+128) )
+		{
+			sprintf(msg,"明文长度不合法[%d]",iSrcBufLen);
+			return -1;
+		}
+
+		pczDTx=(char *)malloc( iDTxLen );
+		if( NULL==pczDTx )
+		{
+			sprintf(msg,"pczDTx malloc() failed");
+			return -1;
+		}
+
+		pczSrcBufHex=(char *)malloc( iSrcBufHexLen );
+		if( NULL==pczSrcBufHex )
+		{
+			free(pczDTx);
+			sprintf(msg,"pczSrcBufHex malloc() failed");
+			return -1;
+		}
+
+		pczSrcDT=(char *)malloc( iSrcDTLen );
+		if( NULL==pczSrcDT )
+		{
+			free(pczDTx);
+			free(pczSrcBufHex);
+			sprintf(msg,"pczSrcDT malloc() failed");
+			return -1;
+		}
+
+		pczSrcDT2=(char *)malloc( iSrcDTLen );
+		if( NULL==pczSrcDT2 )
+		{
+			free(pczDTx);
+			free(pczSrcBufHex);
+			free(pczSrcDT);
+			sprintf(msg,"pczSrcDT2 malloc() failed");
+			return -1;
+		}
+
+		memset(pczDTx,0x0,iDTxLen);
+		memset(pczSrcBufHex,0x0,iSrcBufHexLen);
+		memset(pczSrcDT,0x0,iSrcDTLen);
+		memset(pczSrcDT2,0x0,iSrcDTLen);
+
+		/* 生成加密戳混乱码 */
+		memset(aczDTMix,0x0,sizeof(aczDTMix));
+		iLen=strlen(pczDict);
+		for(i=0;i<6;i++)
+		{
+			iTmp=rand()%iLen;
+			aczDTMix[i]=pczDict[iTmp];
+		}
+		
+		/* 将加密戳混乱码加到密码戳中，最后形成的加密戳混乱码+加密戳的串长度应该等于加密戳长度X2 */
+		j=0;
+		k=0;
+		for(i=0;i<iDTLen;i++)
+		{
+			pczDTx[j*2]=pczDT[i];
+			pczDTx[j*2+1]=aczDTMix[k];
+			j++;
+			k++;
+			if( k>=6 ) k=0;
+		}
+		/*printf("密码戳[%s]%d[%s][%s]\n",pczDT,iDTLen,aczDTMix,pczDTx);*/
+
+		/* 将明文加上加密戳 */
+		j=0;
+		iLen=strlen(pczDTx);
+		for(i=0;i<iSrcBufLen;i++)
+		{
+			pczSrcDT[i]=pczSrcBuf[i]^pczDTx[j];
+			j++;
+			if( j>=iLen ) j=0;
+		}
+		/*printf("明文加上加密戳[%s]\n",pczSrcDT);*/
+
+		/* 将加上加密戳的明文移位 */
+		iMix=rand()%iSrcBufLen;
+		sprintf(pczSrcDT2,"%d",iMix);
+		iTmp=rand()%26 + (int)'A';
+		sprintf(aczTmp,"%c%s",(char)iTmp,aczDTMix);
+		strcat(pczSrcDT2,aczTmp);
+
+		iLen=strlen(pczSrcDT2);
+		memcpy(pczSrcDT2+iLen,pczSrcDT+iMix,iSrcBufLen-iMix);
+		memcpy(pczSrcDT2+iLen+iSrcBufLen-iMix,pczSrcDT,iMix);
+		
+		iLen +=iSrcBufLen;
+		/*printf("[%s]\n[%s]%d=%d\n",pczSrcDT,pczSrcDT2,iMix,iLen);*/
+
+		/* 将加上加密戳的明文字符串转成HEX串 */
+		j=0;
+		for(i=0;i<iLen;i++)
+		{
+			sprintf(aczTmp,"%02X",(unsigned char)pczSrcDT2[i]);
+			pczSrcBufHex[j]=aczTmp[0];
+			pczSrcBufHex[j+1]=aczTmp[1];
+			j+=2;
+		}
+		/*printf("加上加密戳的明文字符串转成HEX串:\n[%s] LEN[%d] \n\n",pczSrcBufHex,strlen(pczSrcBufHex));*/
+
+		/* 将加上加密戳的明文字符HEX串密化 */
+		iRet=CCBUKeyDealCode(pczDict,pczSrcBufHex,strlen(pczSrcBufHex),msg);
+		if( iRet<0 )
+		{
+			free(pczDTx);
+			free(pczSrcBufHex);
+			free(pczSrcDT);
+			free(pczSrcDT2);
+			return -1;
+		}
+		/*printf("加上加密戳的明文字符HEX串密化:\n[%s]\n",pczSrcBufHex);*/
+
+		iLen=strlen(pczSrcBufHex);
+		if( iLen>=iCodeBufLen )
+		{
+			sprintf(msg,"存放密文的空间不足。密文长度[%d]",iLen);
+			free(pczDTx);
+			free(pczSrcBufHex);
+			free(pczSrcDT);
+			free(pczSrcDT2);
+			return -1;
+		}
+
+		memcpy(pczCodeBuf,pczSrcBufHex,iLen);
+		pczCodeBuf[iLen]=0x0;
+
+		free(pczDTx);
+		free(pczSrcBufHex);
+		free(pczSrcDT);
+		free(pczSrcDT2);
+
+		return 0;
+	}
+
+public:
+	static int TheCode(char *pczDT,char *pczBuf,char *pczCode,int iCodeSize,char *msg)
+	{
+		int iRet;
+		int iCodeBufLen=0;
+		char aczDict[128]="E0F752893C614ABD";
+		//char aczDict[128]="B1A7D438CF65E290";
+		//char aczDict[128]="EHAJFLRZDQTYGSWK";
+
+
+		/* 初始化随机数种子 */
+		time_t t;
+		srand( (unsigned) time(&t) );
+
+		iRet=CCBUKeyCode(aczDict,pczDT,strlen(pczDT),pczBuf,strlen(pczBuf),pczCode,iCodeSize,msg);
+
+		return iRet;
+	}
+};
+//---------------------------------------------------------------------------
+
+
+#endif

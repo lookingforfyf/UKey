@@ -1,0 +1,14 @@
+#ifndef __ONKEY_LOG_H__
+#define __ONKEY_LOG_H__
+
+
+#if (ONKEY_LOG_ON==1)
+void LogEntry(LPCSTR lpszMsg, LPCSTR lpszDesc, ...);
+void LogHex(LPCSTR lpszMsg, LPCVOID lpData, int nLen);
+#else
+#define LogEntry __noop
+#define LogHex __noop
+#endif
+
+
+#endif

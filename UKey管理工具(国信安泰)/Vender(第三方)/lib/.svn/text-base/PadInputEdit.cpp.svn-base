@@ -1,0 +1,114 @@
+// PadPinEdit.cpp : 实现文件
+//
+
+#include "stdafx.h"
+#include "PadInputEdit.h"
+#include "OnKeyPinpad.h"
+
+// CPadInputEdit
+
+IMPLEMENT_DYNAMIC(CPadInputEdit, CEdit)
+CPadInputEdit::CPadInputEdit()
+{
+	m_nMaxPinLen = 8;
+	m_nMinPinLen = 8;
+}
+
+CPadInputEdit::~CPadInputEdit()
+{
+}
+
+
+BEGIN_MESSAGE_MAP(CPadInputEdit, CEdit)
+	ON_WM_CHAR()
+	ON_MESSAGE(WM_PAD_KEY_VALUE, OnPadInputKey)
+END_MESSAGE_MAP()
+
+
+void CPadInputEdit::SetPinLen(int max, int min)
+{
+	m_nMaxPinLen = max;
+	m_nMinPinLen = min;
+}
+
+BOOL CPadInputEdit::PreTranslateMessage(MSG* pMsg)
+{
+	return CEdit::PreTranslateMessage(pMsg);
+}
+
+LRESULT CPadInputEdit::OnPadInputKey(WPARAM wp, LPARAM lp)
+{
+	CString strText;
+	int nStart, nEnd;
+	this->GetSel(nStart, nEnd);
+
+	this->GetWindowText(strText);
+	switch(wp)
+	{
+	case PAD_KEY_CLEAR:
+		strText = "";
+		this->SetWindowText(strText);
+		this->SetSel(strText.GetLength(), -1,  FALSE);
+		this->SetFocus();
+		break;
+	case PAD_KEY_BACK:
+		break;
+	case PAD_KEY_ENTER:
+		//::SendMessage(this->GetParent()->GetSafeHwnd(), WM_PAD_ENTER_OR_CANCEL, IDOK, NULL);
+		break;
+	case PAD_KEY_CAPS:
+		this->SetSel(strText.GetLength(), -1,  FALSE);
+		this->SetFocus();
+		break;
+	case PAD_KEY_CANCEL:
+		//::SendMessage(this->GetParent()->GetSafeHwnd(), WM_PAD_ENTER_OR_CANCEL, IDCANCEL, NULL);
+		break;
+	default:
+		{
+			if(nEnd > nStart)
+			{
+				this->ReplaceSel( CString((CHAR)wp) );
+				this->SetSel(++nStart, nStart,  FALSE);
+				this->SetFocus();
+			}
+			else
+			{
+				if(strText.GetLength() >=m_nMaxPinLen)
+				{
+					Beep(100, 200);
+					return 0;
+				}
+				if(nStart == nEnd && nEnd != strText.GetLength())
+				{
+					strText.Insert(nStart, (CHAR)wp);
+					this->SetWindowText(strText);
+					this->SetSel(++nStart, nStart,  FALSE);
+					this->SetFocus();
+				}
+				else
+				{
+					strText += (CHAR)wp;
+					this->SetWindowText(strText);
+					this->SetSel(strText.GetLength(), -1,  FALSE);
+					this->SetFocus();
+				}
+			}
+		}
+	}
+	return 0;
+}
+void CPadInputEdit::OnChar(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+	if(VK_BACK != nChar && ::isprint(nChar) == 0)
+		return ;
+
+	CEdit::OnChar(nChar, nRepCnt, nFlags);
+
+	if(VK_BACK == nChar)
+	{
+		int nStart, nEnd;
+		this->GetSel(nStart, nEnd);
+		this->SetSel(nStart, nEnd, FALSE);
+		this->SetFocus();
+	}
+}
